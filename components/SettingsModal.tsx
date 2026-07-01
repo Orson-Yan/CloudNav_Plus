@@ -247,7 +247,6 @@ const extBackgroundJs = `// background.js - ${localSiteSettings.navTitle || 'Clo
 const CONFIG = {
   apiBase: "${domain}",
   password: "${password}",
-  authTimestamp: "${localStorage.getItem('lastLoginTime') || ''}",
   siteName: "${(localSiteSettings.navTitle || 'CloudNav').replace(/"/g, '\\"')}"
 };
 const MODE_KEY = 'cloudnav_ui_mode';
@@ -435,8 +434,7 @@ async function saveLink(title, url, categoryId, icon = '') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-auth-password': CONFIG.password,
-                ...(CONFIG.authTimestamp ? { 'x-auth-issued-at': CONFIG.authTimestamp } : {})
+                'x-auth-password': CONFIG.password
             },
             body: JSON.stringify({
                 saveConfig: 'favicon',
@@ -454,10 +452,9 @@ async function saveLink(title, url, categoryId, icon = '') {
     try {
         const res = await fetch(\`\${CONFIG.apiBase}/api/link\`, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
-                'x-auth-password': CONFIG.password,
-                ...(CONFIG.authTimestamp ? { 'x-auth-issued-at': CONFIG.authTimestamp } : {})
+                'x-auth-password': CONFIG.password
             },
             body: JSON.stringify({
                 title: title || '未命名',
@@ -574,8 +571,7 @@ function notify(title, message) {
 
 const extSidebarJs = `const CONFIG = {
   apiBase: "${domain}",
-  password: "${password}",
-  authTimestamp: "${localStorage.getItem('lastLoginTime') || ''}"
+  password: "${password}"
 };
 const CACHE_KEY = 'cloudnav_data';
 
@@ -720,11 +716,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const res = await fetch(\`\${CONFIG.apiBase}/api/storage\`, {
                 headers: {
-                    'x-auth-password': CONFIG.password,
-                    ...(CONFIG.authTimestamp ? { 'x-auth-issued-at': CONFIG.authTimestamp } : {})
+                    'x-auth-password': CONFIG.password
                 }
             });
-            
+
             if (!res.ok) throw new Error("Sync failed");
             
             const data = await res.json();
@@ -849,8 +844,7 @@ const extPopupHtml = `<!DOCTYPE html>
 
 const extPopupJs = `const CONFIG = {
   apiBase: "${domain}",
-  password: "${password}",
-  authTimestamp: "${localStorage.getItem('lastLoginTime') || ''}"
+  password: "${password}"
 };
 const CACHE_KEY = 'cloudnav_data';
 
@@ -970,8 +964,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             refreshBtn.classList.add('rotating');
             const res = await fetch(\`\${CONFIG.apiBase}/api/storage\`, {
                 headers: {
-                    'x-auth-password': CONFIG.password,
-                    ...(CONFIG.authTimestamp ? { 'x-auth-issued-at': CONFIG.authTimestamp } : {})
+                    'x-auth-password': CONFIG.password
                 }
             });
             if (!res.ok) throw new Error('同步失败');
