@@ -1,196 +1,168 @@
-# CloudNav-Oorz（修改版）
-本项目基于
-https://github.com/sese972010/CloudNav-
-https://github.com/aabacada/CloudNav-abcd
-两个融合 并根据自身需求做了一些修改 
+# CloudNav Plus
 
-<details>
-<summary>更新日志</summary>
+个人导航站，基于 Cloudflare Pages + KV，React + TypeScript 全栈。
 
-### 2026.04.07
-
-1. 修复 AI 配置可被未授权读取的问题，`/api/storage?getConfig=ai` 现已要求登录校验。
-2. 修复 WebDAV 代理接口未鉴权的问题，备份、恢复、测试连接现在都需要有效登录态。
-3. 删除 `index.html` 里不存在的 `/index.css` 引用，避免额外 404 请求。
-4. WebDAV 设置现已支持写入 KV，并在登录后自动从 KV 拉回到当前设备。
-
-</details>
-
-# CloudNav (云航) - 智能私有导航站
-
-<div align="center">
-
-![React](https://img.shields.io/badge/React-18-blue?style=flat-square&logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.0-38bdf8?style=flat-square&logo=tailwindcss)
-![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-orange?style=flat-square&logo=cloudflare)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-
-<br/>
-
-<!-- 请将下方的链接替换为您实际部署后的 Cloudflare Pages 域名 -->
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-View%20Online-7c3aed?style=for-the-badge&logo=sparkles)](https://oorz.org/)
-
-<br/>
-
-**一个现代化、基于 AI 辅助的全栈个人导航站。**
-**无需购买服务器，依托 Cloudflare 免费托管，实现多端数据实时同步。**
-
-[在线演示](https://oorz.org/) • [功能特性](#-核心功能) • [项目展示](#-项目展示) • [部署教程](#-部署教程-免费) • [使用指南](#-使用指南)
-
-</div>
+Fork 自 [sese972010/CloudNav-](https://github.com/sese972010/CloudNav-) 和 [aabacada/CloudNav-abcd](https://github.com/aabacada/CloudNav-abcd)，在此基础上按自身需求持续改造。
 
 ---
 
-## ✨ 核心功能
+## 技术栈
 
-### 🧠 AI 深度集成
-*   **多模型支持**: 完美支持 **Google Gemini**、**OpenAI**、**DeepSeek**、**Claude** 等任何兼容 OpenAI 接口的模型。
-*   **一键智能补全**: 在设置面板一键扫描，自动为成百上千个书签生成精准的中文简介。
-*   **智能分类**: 添加链接时，AI 自动分析网页内容并推荐最合适的分类目录。
-
-### ☁️ 数据同步与安全
-*   **Cloudflare KV 同步**: 利用边缘存储技术，公司、家里、手机三端数据秒级同步。
-*   **链接图标持久化**: 第一次添加链接时自动抓取并存进 Cloudflare KV，换设备打开也不用重新补图标。
-*   **WebDAV 双重备份**: 支持Nextcloud 等 WebDAV 网盘备份，数据自主掌控，并可选把当前 WebDAV 配置一起打包同步。
-*   **隐私加密体系**:
-    *   **全局锁**: 部署时设置访问密码，防止他人查看。
-    *   **目录锁**: 支持对“私有资源”等特定分类单独设置密码，隐藏敏感内容。
-    *   **分类联动全站密码**: 可给单个分类开启“先登录再看”，未输入全站密码时不会显示该分类内容。
-
-### 🎨 极致体验
-*   **Chrome 扩展插件 (Pro)**: 
-    *   **一键保存**: 点击浏览器图标即可弹出侧边栏，快速将当前网页保存到指定分类。
-    *   **侧边栏导航**: 按下快捷键 (如 Ctrl+Shift+E) 呼出侧边栏，在任意网页直接浏览、搜索和管理您的书签，无需离开当前页面。
-*   **置顶专区**: 常用网站一键置顶，在首页顶部常驻显示。
-*   **无缝迁移**: 支持导入 Chrome/Edge 书签 HTML 文件（智能去重）。
-
-> 💡 部分功能创意参考自 [CloudNav-abcd](https://github.com/aabacada/CloudNav-abcd)，该分支的导航项目同样优秀，特此致谢。
+| 层 | 技术 |
+|---|---|
+| 前端 | React 18 + TypeScript + Tailwind CSS + Vite |
+| 后端 | Cloudflare Pages Functions（serverless） |
+| 存储 | Cloudflare KV（数据 + 图标缓存） |
+| 拖拽 | @dnd-kit |
 
 ---
 
-## 📸 项目展示
+## 本地开发
 
-> 以下为 CloudNav 的实际运行界面预览。
+```bash
+npm install
+npm run dev        # Vite dev server → http://localhost:5173
+npm run build      # 构建到 dist/
+npm run preview    # 预览构建产物
+```
 
-### 🖥️ 桌面端概览
-| 浅色模式 (Light Mode) | 深色模式 (Dark Mode) |
-| :---: | :---: |
-| ![Light Mode](screenshots/overview-light.svg) | ![Dark Mode](screenshots/overview-dark.svg) |
-| *清爽明亮的日间视图* | *护眼沉浸的夜间视图* |
+> **注意**：本地 Vite 不含 Pages Functions 运行时，`/api/*` 均返回 404，数据自动降级到 `localStorage`（key: `cloudnav_data_cache`）。  
+> 如需本地跑完整后端，用 `wrangler pages dev` 并配好 KV 绑定和 `PASSWORD` 环境变量。
 
-### 🛠️ 核心功能演示
-| AI 智能设置 | 分类加密锁 | 移动端适配 |
-| :---: | :---: | :---: |
-| ![AI Settings](screenshots/overview-light.svg) | ![Security](screenshots/overview-dark.svg) | ![Mobile](screenshots/mobile-view.svg) |
-| *一键批量生成描述* | *私密目录密码保护* | *完美适配手机浏览器* |
+### 清除本地缓存（开发用）
 
-*(注：上方使用了项目生成的 SVG 矢量预览图，代表实际 UI 布局)*
+浏览器控制台执行：
 
----
-
-## 🚀 部署教程 (免费)
-
-本应用完全基于 **Cloudflare Pages** + **KV** 构建，无需服务器，永久免费。
-
-> **📥 [点击下载完整图文教程 (.docx)](图文教程.docx)**
-
-### 📋 简明部署步骤 (适合有经验用户)
-
-1.  **Fork 项目**: 点击右上角 Fork 按钮，将本项目克隆到您的 GitHub 账号。
-2.  **创建 Pages 应用**: 登录 Cloudflare Dashboard -> Workers & Pages -> 创建应用程序 -> Pages -> 连接到 Git -> 选择 `CloudNav-`。
-3.  **配置构建**:
-    *   框架预设: **无 (None)**
-    *   构建命令: `npm run build`
-    *   输出目录: `dist`
-4.  **创建数据库**: 在 Workers & Pages -> KV 中创建一个新的命名空间，命名为 `CLOUDNAV_DB`。
-5.  **绑定变量**:
-    *   进入 Pages 项目设置 -> 绑定 (Bindings) -> 添加 KV 命名空间 -> 变量名填 `CLOUDNAV_KV`，值选择刚才创建的 `CLOUDNAV_DB`。
-    *   进入 环境变量 (Environment variables) -> 添加变量 `PASSWORD`，值为您的访问密码。
-6.  **部署**: 重新部署项目即可。
+```js
+localStorage.clear()
+```
 
 ---
 
-### 📖 保姆级图文教程 (适合新手)
+## 项目结构
 
-> 如果您是第一次使用 Cloudflare，请严格按照以下步骤操作。
+```
+├── App.tsx                    # 根组件，全部状态集中管理（~3000行）
+├── types.ts                   # 所有 TS 类型定义
+├── components/
+│   ├── CommandPalette.tsx     # Ctrl+K 全局搜索面板
+│   ├── LinkModal.tsx          # 链接新增/编辑弹窗（含标签输入）
+│   ├── SettingsModal.tsx      # 设置面板（AI/WebDAV/搜索/网站/扩展）
+│   ├── CategoryManager.tsx    # 分类管理
+│   ├── BackupModal.tsx        # 备份与恢复
+│   └── ...
+├── functions/api/
+│   ├── storage.ts             # /api/storage — KV 读写，主数据 + 配置 + favicon
+│   ├── webdav.ts              # /api/webdav  — WebDAV 代理（规避 CORS）
+│   └── link.ts                # /api/link    — 抓取链接标题/favicon 元信息
+└── services/
+    ├── geminiService.ts       # AI 调用（Gemini / OpenAI compatible）
+    └── bookmarkParser.ts      # 浏览器书签 HTML 解析
+```
 
-#### 第一步：点击创建应用程序
-![第一步](1.png)
+### 关键环境变量（Cloudflare Pages）
 
-#### 第二步：点击右下角 Get started
-![第二步](2.png)
-
-#### 第三步：导入现有你已经 fork 的仓库
-![第三步](3.png)
-
-#### 第四步：这里选你自己 fork 的仓库名称
-![第四步](4.png)
-
-#### 第五步：按图中填写，其他默认
-![第五步](5.png)
-
-#### 第六步：左侧找到 Workers KV 点击右侧新建
-![第六步](6.png)
-
-#### 第七步：空间名称填写 `CLOUDNAV_DB`（建议复制）
-![第七步](7.png)
-
-#### 第八步：绑定 KV 数据库
-回到刚才的 pages 设置页面找到绑定-右侧下滑找到 kv 命名空间，变量名称填写 `CLOUDNAV_KV`（建议复制）
-![第八步](8.png)
-
-#### 第九步：设置访问密码
-设置中找到变量和机密-填入 `PASSWORD`（建议复制）下面的值填入你自己要设置的密码，这一步是你登录导航页需要的登录密码
-![第九步](9.png)
-
-#### 第十步：添加自定义域名（可选项）
-![第十步](10.png)
-
-**🎉 所有设置结束后，请务必到部署页面点击“重新部署” (Create New Deployment)，项目即可正常使用！**
+| 变量名 | 类型 | 说明 |
+|---|---|---|
+| `CLOUDNAV_KV` | KV 绑定 | 主数据存储，变量名必须完全一致 |
+| `PASSWORD` | 环境变量 | 全站访问密码 |
 
 ---
 
-## ⚙️ 使用指南
+## 已实现功能
 
-### 1. Chrome 扩展程序 (推荐)
-点击侧边栏左下角的 **“设置”** -> **“扩展工具”**。
-系统会自动根据您的域名生成 3 个文件代码 (`manifest.json`, `popup.html`, `popup.js`)。
-1. 在电脑新建文件夹，保存这 3 个文件。
-2. 打开 Chrome 扩展管理页 (`chrome://extensions`)。
-3. 开启右上角 **“开发者模式”**。
-4. 点击 **“加载已解压的扩展程序”**，选择刚才的文件夹。
-5. 以后浏览网页时，点击插件图标即可弹出窗口，**选择分类并保存**。
+### 链接管理
+- 新增 / 编辑 / 删除（标题、URL、图标、描述、分类、标签）
+- 拖拽排序（同分类内，@dnd-kit）
+- 置顶 + 置顶区排序
+- 批量编辑（多选删除、批量移动分类）
+- 右键上下文菜单（编辑、删除、置顶、复制链接、生成二维码）
+- 标签系统（`tags[]`，跨分类打标，侧边栏标签云过滤）
 
-### 2. 配置 AI 服务
-点击侧边栏底部的 **“设置”** -> **“AI 设置”**：
-*   **提供商**: Google Gemini 或 OpenAI 兼容 (DeepSeek等)。
-*   **Key & Model**: 输入 API Key 和模型名称。
-*   **一键补全**: 点击底部的 **“一键补全所有描述”**，AI 将自动扫描所有无描述的链接并后台生成。
+### 分类管理
+- 创建 / 编辑 / 删除 / 排序
+- 图标（Lucide 图标名 或 emoji）
+- 分类密码保护
+- 分类要求全站登录后才可查看
 
-### 3. WebDAV 备份
-点击侧边栏的 **“备份”** 图标，配置 WebDAV 信息，即可一键上传备份到云端。
-如果你想把当前 WebDAV 地址、账号和应用密码一起迁移，也可以在备份时勾选同步 WebDAV 配置，恢复或导入时再决定要不要覆盖本地配置。
+### 搜索
+- **Ctrl+K 命令面板**：全局链接搜索，键盘导航（↑↓ 回车打开 Esc 关闭），显示分类归属
+- 外部搜索引擎（10+ 预设 + 自定义 URL 模板）
+- 内部实时过滤（标题 / URL / 描述）
 
-### 4. 本地数据导出 (Local Data Export)
-点击侧边栏的 **“备份”** 图标 -> **“导出 HTML”**。
-*   生成的 HTML 文件完全兼容 **Chrome**、**Edge**、**Firefox** 等主流浏览器的导入格式。
-*   完整保留您在云航中整理的分类目录结构。
+### 数据 & 备份
+- Cloudflare KV 实时同步（增删改自动推送）
+- localStorage 本地缓存（离线降级）
+- WebDAV 备份 / 恢复（Nextcloud 等）
+- JSON 导出 / 导入（含 WebDAV/AI 配置）
+- HTML 书签导出（兼容 Chrome / Firefox 导入格式）
+- 浏览器书签 HTML 导入（去重 + 智能分类）
 
-**如何导入到浏览器 (以 Chrome 为例):**
-1. 打开 Chrome 浏览器，点击右上角菜单 -> **书签与清单** -> **书签管理器**。
-2. 点击页面右上角的三个点图标 -> **导入书签**。
-3. 选择刚才从云航下载的 HTML 文件即可恢复所有书签。
+### 认证
+- 全站访问密码
+- 密码过期机制（可配置天数，0 = 永不过期）
+- 分类独立密码
+- Session token 本地存储 + 到期自动清除
+
+### 外观
+- 亮色 / 深色主题（手动 + 跟随系统），切换时圆形展开动画
+- **自定义页面背景**（渐变预设 / 任意 CSS background 值）
+- 卡片样式：详情版 / 简约版
+- 自定义站点标题、导航栏名称、Favicon
+
+### AI 集成
+- 支持 Gemini / OpenAI Compatible（DeepSeek、Claude 等）
+- 一键批量生成中文描述（可暂停 / 继续）
+- 添加链接时 AI 推荐分类
+
+### 其他
+- Chrome / Firefox 扩展自动生成（弹窗 + 侧边栏模式）
+- Bookmarklet 快捷添加（URL 参数 `add_url` / `add_title`）
+- Favicon 抓取并持久化到 KV（含 404 负缓存，TTL 1天）
+- 同步状态指示（保存中 / 已保存 / 失败）
+- 移动端响应式 + 侧边栏折叠
 
 ---
 
-<div align="center">
+## 待开发 / 计划中
 
-**如果您觉得项目不错，希望给本项目点一个免费的 Star ⭐️，感谢您的关注！**
+### P0（近期）
+- [ ] 链接点击统计（点击次数 + 最近访问，支持热度排序）
+- [ ] 链接打开方式（当前标签 / 新标签，`openInNewTab` 字段）
 
-**如果有 Bug 或改进的地方，请在 Issue 中提交您的建议。**
+### P1（中期）
+- [ ] 死链检测（扫描并标记 404 / 超时链接）
+- [ ] PWA 支持（manifest + service worker，移动端添加到主屏幕）
 
-<br/>
+### P2（长期）
+- [ ] 链接 Markdown 备注（突破描述字数限制）
+- [ ] 搜索历史记录
+- [ ] 分类一键全开（右键分类，新标签批量打开）
+- [ ] 主题 Accent 颜色自定义
 
-Made with ❤️ by CloudNav Team
-</div>
+---
+
+## 部署（Cloudflare Pages）
+
+1. Fork 本仓库到自己的 GitHub
+2. Cloudflare Dashboard → Workers & Pages → 创建应用 → Pages → 连接 Git
+3. 构建配置：构建命令 `npm run build`，输出目录 `dist`
+4. KV → 新建命名空间 → 绑定变量名填 `CLOUDNAV_KV`
+5. 环境变量添加 `PASSWORD`（你的登录密码）
+6. 重新部署生效
+
+---
+
+## 更新日志
+
+### 2026.07
+- 新增 Ctrl+K 命令面板（全局搜索 + 键盘导航）
+- 新增自定义页面背景（渐变预设 + 自定义 CSS）
+- 新增标签系统（链接多标签 + 侧边栏标签云过滤）
+- 修复 8 处 Bug（类型安全、favicon 负缓存、登录后图标竞态、拖拽排序、WebDAV 错误反馈、JSON 解析静默失败、扩展 JS 注入风险）
+
+### 2026.04
+- 修复 AI 配置接口未鉴权问题
+- 修复 WebDAV 代理接口未鉴权问题
+- WebDAV 配置支持写入 KV 并跨设备同步
+- 删除无效 `/index.css` 引用
