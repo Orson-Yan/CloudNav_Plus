@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Bot, Key, Globe, Sparkles, PauseCircle, Wrench, Box, Copy, Check, LayoutTemplate, Info, Download, Sidebar, Keyboard, MousePointerClick, AlertTriangle, Package, Zap, Menu, Upload } from 'lucide-react';
 import { AIConfig, LinkItem, Category, SiteSettings } from '../types';
-import { generateLinkDescription } from '../services/geminiService';
+import { generateLinkDescription, suggestTags } from '../services/geminiService';
 import JSZip from 'jszip';
 
 interface SettingsModalProps {
@@ -122,27 +122,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         return;
     }
 
-    const missingLinks = links.filter(l => !l.description);
+    // 需要补全的：缺描述 或 缺标签（仅处理未删除的链接）
+    const missingLinks = links.filter(l => !l.deleted && (!l.description || !l.tags || l.tags.length === 0));
     if (missingLinks.length === 0) {
-        alert("所有链接都已有描述！");
+        alert("所有链接的描述和标签都已补全！");
         return;
     }
 
-    if (!confirm(`发现 ${missingLinks.length} 个链接缺少描述，确定要使用 AI 自动生成吗？这可能需要一些时间。`)) return;
+    if (!confirm(`发现 ${missingLinks.length} 个链接缺少描述或标签，确定要使用 AI 自动补全吗？这可能需要一些时间。`)) return;
 
     setIsProcessing(true);
     shouldStopRef.current = false;
     setProgress({ current: 0, total: missingLinks.length });
-    
+
     let currentLinks = [...links];
+    // 已有标签池，供 AI 复用，保持标签一致性
+    const tagPool = new Set<string>();
+    links.forEach(l => { if (!l.deleted) l.tags?.forEach(t => tagPool.add(t)); });
 
     for (let i = 0; i < missingLinks.length; i++) {
         if (shouldStopRef.current) break;
 
         const link = missingLinks[i];
         try {
-            const desc = await generateLinkDescription(link.title, link.url, localConfig);
-            currentLinks = currentLinks.map(l => l.id === link.id ? { ...l, description: desc } : l);
+            const needDesc = !link.description;
+            const needTags = !link.tags || link.tags.length === 0;
+
+            const [desc, aiTags] = await Promise.all([
+                needDesc ? generateLinkDescription(link.title, link.url, localConfig) : Promise.resolve(null),
+                needTags ? suggestTags(link.title, link.url, Array.from(tagPool), localConfig) : Promise.resolve([]),
+            ]);
+
+            currentLinks = currentLinks.map(l => {
+                if (l.id !== link.id) return l;
+                const updated = { ...l };
+                if (desc) updated.description = desc;
+                if (aiTags.length > 0) {
+                    updated.tags = aiTags;
+                    aiTags.forEach(t => tagPool.add(t));
+                }
+                return updated;
+            });
             onUpdateLinks(currentLinks);
             setProgress({ current: i + 1, total: missingLinks.length });
         } catch (e) {
@@ -1351,7 +1371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             {isProcessing ? (
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                                        <span>正在生成描述... ({progress.current}/{progress.total})</span>
+                                        <span>正在补全描述和标签... ({progress.current}/{progress.total})</span>
                                         <button onClick={() => { shouldStopRef.current = true; setIsProcessing(false); }} className="text-red-500 flex items-center gap-1 hover:underline">
                                             <PauseCircle size={12}/> 停止
                                         </button>
@@ -1365,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     onClick={handleBulkGenerate}
                                     className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 px-3 py-2 rounded-lg transition-colors border border-purple-200 dark:border-purple-800"
                                 >
-                                    <Sparkles size={16} /> 一键补全所有缺失的描述
+                                    <Sparkles size={16} /> AI 一键补全描述和标签
                                 </button>
                             )}
                         </div>

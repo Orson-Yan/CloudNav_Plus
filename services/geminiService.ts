@@ -91,6 +91,170 @@ export const generateLinkDescription = async (title: string, url: string, config
 };
 
 /**
+ * Suggests tags for a link. Prefers reusing existing tags to keep them consistent,
+ * but may add 1-2 new ones. Returns a deduplicated array (max 4).
+ */
+export const suggestTags = async (title: string, url: string, existingTags: string[], config: AIConfig): Promise<string[]> => {
+    if (!config.apiKey) return [];
+
+    const tagPool = existingTags.length > 0 ? existingTags.join(', ') : '(none yet)';
+    const prompt = `
+        Website: "${title}" (${url})
+
+        Existing tags in the system: ${tagPool}
+
+        Suggest 2-4 concise tags (Chinese Simplified, single words or short phrases) for this website.
+        PREFER reusing existing tags when they fit. Only invent a new tag when none of the existing ones apply.
+        Return ONLY a comma-separated list of tags. No '#', no numbering, no extra text.
+    `;
+
+    try {
+        let raw = '';
+        if (config.provider === 'gemini') {
+            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+            const modelName = config.model || 'gemini-2.5-flash';
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: `Task: Tag this website.\n${prompt}`,
+            });
+            raw = response.text ? response.text.trim() : '';
+        } else {
+            raw = await callOpenAICompatible(
+                config,
+                "You are a tagging assistant. You only output a comma-separated list of tags.",
+                prompt
+            );
+        }
+
+        if (!raw) return [];
+        const seen = new Set<string>();
+        const tags: string[] = [];
+        raw.split(/[,，\n]/).forEach(part => {
+            const t = part.trim().replace(/^#+/, '').replace(/^["']|["']$/g, '');
+            if (t && !seen.has(t)) {
+                seen.add(t);
+                tags.push(t);
+            }
+        });
+        return tags.slice(0, 4);
+    } catch (e) {
+        console.error(e);
+        return [];
+    }
+};
+
+/**
+ * Semantic search: given a natural-language query, returns matching link ids
+ * ordered by relevance. Used by the command palette when keyword search finds nothing.
+ */
+export const semanticSearchLinks = async (
+    query: string,
+    items: { id: string; title: string; url: string; description?: string; tags?: string[] }[],
+    config: AIConfig
+): Promise<string[]> => {
+    if (!config.apiKey || !query.trim() || items.length === 0) return [];
+
+    const list = items.map(i =>
+        `${i.id} | ${i.title} | ${i.url}${i.description ? ' | ' + i.description : ''}${i.tags && i.tags.length ? ' | #' + i.tags.join(' #') : ''}`
+    ).join('\n');
+    const prompt = `
+        User is searching their bookmarks with this query: "${query}"
+
+        Bookmarks, one per line, formatted as: id | title | url | description | tags
+
+        ${list}
+
+        Understand the user's intent (semantic match, not just keyword). Return the ids of the most relevant bookmarks, most relevant first, up to 8.
+        Return ONLY a comma-separated list of ids. If nothing is relevant, return an empty response.
+    `;
+
+    try {
+        let raw = '';
+        if (config.provider === 'gemini') {
+            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+            const modelName = config.model || 'gemini-2.5-flash';
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: `Task: Semantic bookmark search.\n${prompt}`,
+            });
+            raw = response.text ? response.text.trim() : '';
+        } else {
+            raw = await callOpenAICompatible(
+                config,
+                "You are a semantic search engine over the user's bookmarks. You only output a comma-separated list of ids ordered by relevance.",
+                prompt
+            );
+        }
+
+        if (!raw) return [];
+        const validIds = new Set(items.map(i => i.id));
+        const ordered: string[] = [];
+        raw.split(/[,，\n]/).map(s => s.trim()).forEach(id => {
+            if (validIds.has(id) && !ordered.includes(id)) ordered.push(id);
+        });
+        return ordered.slice(0, 8);
+    } catch (e) {
+        console.error(e);
+        return [];
+    }
+};
+
+/**
+ * Asks AI to identify links worth cleaning up (dead-looking, low-value or redundant).
+ * Returns an array of link ids. Exact-duplicate detection is handled locally by the caller.
+ */
+export const findCleanupCandidates = async (
+    items: { id: string; title: string; url: string; description?: string }[],
+    config: AIConfig
+): Promise<string[]> => {
+    if (!config.apiKey || items.length === 0) return [];
+
+    const list = items.map(i => `${i.id} | ${i.title} | ${i.url}${i.description ? ' | ' + i.description : ''}`).join('\n');
+    const prompt = `
+        Below is a list of bookmarks, one per line, formatted as: id | title | url | description
+
+        ${list}
+
+        Identify bookmarks that are good candidates for cleanup, meaning any of:
+        - clearly redundant / near-duplicate of another entry
+        - broken or placeholder-looking (e.g. "test", "新建", "无标题", localhost, example.com)
+        - obviously low value
+
+        Be conservative: only include entries you are fairly confident about. It is fine to return none.
+        Return ONLY a comma-separated list of the matching ids. No other text. If none, return an empty response.
+    `;
+
+    try {
+        let raw = '';
+        if (config.provider === 'gemini') {
+            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+            const modelName = config.model || 'gemini-2.5-flash';
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: `Task: Review bookmarks for cleanup.\n${prompt}`,
+            });
+            raw = response.text ? response.text.trim() : '';
+        } else {
+            raw = await callOpenAICompatible(
+                config,
+                "You are a careful librarian reviewing bookmarks. You only output a comma-separated list of ids.",
+                prompt
+            );
+        }
+
+        if (!raw) return [];
+        const validIds = new Set(items.map(i => i.id));
+        return raw
+            .split(/[,，\n]/)
+            .map(s => s.trim())
+            .filter(id => validIds.has(id));
+    } catch (e) {
+        console.error(e);
+        return [];
+    }
+};
+
+/**
  * Suggests a category
  */
 export const suggestCategory = async (title: string, url: string, categories: {id: string, name: string}[], config: AIConfig): Promise<string | null> => {

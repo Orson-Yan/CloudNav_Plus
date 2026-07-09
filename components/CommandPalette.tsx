@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, X, ArrowRight, Hash } from 'lucide-react';
-import { LinkItem, Category } from '../types';
+import { Search, X, ArrowRight, Hash, Sparkles, Loader2 } from 'lucide-react';
+import { LinkItem, Category, AIConfig } from '../types';
+import { semanticSearchLinks } from '../services/geminiService';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   links: LinkItem[];
   categories: Category[];
+  aiConfig?: AIConfig;
 }
 
-const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links, categories }) => {
+const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links, categories, aiConfig }) => {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [aiResults, setAiResults] = useState<LinkItem[] | null>(null);
+  const [isAiSearching, setIsAiSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -21,21 +25,49 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links,
     return m;
   }, [categories]);
 
-  const results = useMemo(() => {
+  const keywordResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return links.slice(0, 8);
     return links.filter(l =>
       l.title.toLowerCase().includes(q) ||
       l.url.toLowerCase().includes(q) ||
-      (l.description && l.description.toLowerCase().includes(q))
+      (l.description && l.description.toLowerCase().includes(q)) ||
+      (l.tags && l.tags.some(t => t.toLowerCase().includes(q)))
     ).slice(0, 12);
   }, [links, query]);
+
+  // AI 语义搜索结果优先于关键字结果
+  const results = aiResults ?? keywordResults;
+
+  const canAiSearch = !!aiConfig?.apiKey && query.trim().length > 0;
+
+  const runAiSearch = async () => {
+    if (!canAiSearch || isAiSearching) return;
+    setIsAiSearching(true);
+    try {
+      const ids = await semanticSearchLinks(
+        query.trim(),
+        links.map(l => ({ id: l.id, title: l.title, url: l.url, description: l.description, tags: l.tags })),
+        aiConfig!
+      );
+      const byId: Record<string, LinkItem> = {};
+      links.forEach(l => { byId[l.id] = l; });
+      setAiResults(ids.map(id => byId[id]).filter(Boolean));
+      setActiveIndex(0);
+    } catch {
+      setAiResults([]);
+    } finally {
+      setIsAiSearching(false);
+    }
+  };
 
   // 打开时自动聚焦、重置状态
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setActiveIndex(0);
+      setAiResults(null);
+      setIsAiSearching(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -53,17 +85,23 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links,
         setActiveIndex(i => Math.max(i - 1, 0));
       } else if (e.key === 'Enter') {
         e.preventDefault();
+        // 关键字无结果但可用 AI 时，回车触发语义搜索
+        if (results.length === 0 && canAiSearch && !isAiSearching) {
+          runAiSearch();
+          return;
+        }
         const link = results[activeIndex];
         if (link) openLink(link);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, results, activeIndex, onClose]);
+  }, [isOpen, results, activeIndex, onClose, canAiSearch, isAiSearching]);
 
-  // 切换搜索结果时确保可见
+  // 关键字变化时重置 AI 结果与高亮
   useEffect(() => {
     setActiveIndex(0);
+    setAiResults(null);
   }, [query]);
 
   useEffect(() => {
@@ -115,11 +153,33 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links,
           </kbd>
         </div>
 
+        {/* AI 结果标记 */}
+        {aiResults && (
+          <div className="flex items-center gap-1.5 px-4 py-1.5 text-xs text-purple-500 dark:text-purple-400 border-b border-slate-100 dark:border-slate-700">
+            <Sparkles size={12} /> AI 语义搜索结果
+          </div>
+        )}
+
         {/* 结果列表 */}
         <div ref={listRef} className="max-h-80 overflow-y-auto py-2">
           {results.length === 0 ? (
-            <div className="py-10 text-center text-sm text-slate-400">
-              没有找到匹配的链接
+            <div className="py-8 text-center">
+              <p className="text-sm text-slate-400 mb-3">
+                {isAiSearching ? 'AI 正在理解你的意图...' : '没有找到匹配的链接'}
+              </p>
+              {canAiSearch && !isAiSearching && (
+                <button
+                  onClick={runAiSearch}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+                >
+                  <Sparkles size={14} /> 用 AI 语义搜索「{query.trim()}」
+                </button>
+              )}
+              {isAiSearching && (
+                <div className="inline-flex items-center gap-1.5 text-sm text-purple-500">
+                  <Loader2 size={14} className="animate-spin" /> 搜索中...
+                </div>
+              )}
             </div>
           ) : (
             results.map((link, index) => (

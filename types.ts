@@ -10,6 +10,9 @@ export interface LinkItem {
   pinnedOrder?: number; // Field for pinned link sorting order
   order?: number; // Drag-and-drop sort order within a category
   tags?: string[]; // Optional tags for cross-category filtering
+  deleted?: boolean; // Soft-delete flag: item is in the trash bin
+  deletedAt?: number; // Timestamp when moved to trash
+  deletedReason?: string; // Why it was trashed (e.g. 手动删除 / 重复链接 / AI 建议清理)
 }
 
 export interface Category {

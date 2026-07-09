@@ -38,10 +38,15 @@ import SearchConfigModal from './components/SearchConfigModal';
 import ContextMenu from './components/ContextMenu';
 import QRCodeModal from './components/QRCodeModal';
 import CommandPalette from './components/CommandPalette';
+import TrashModal from './components/TrashModal';
+import { findCleanupCandidates } from './services/geminiService';
 
 // --- 配置项 ---
 // 项目核心仓库地址
 const GITHUB_REPO_URL = 'https://github.com/Aaowu/CloudNav-Oorz';
+
+// 本地开发（无 Pages Functions 后端）时跳过密码，避免因缺少后端而被拦在登录页
+const IS_LOCAL_DEV = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 const LOCAL_STORAGE_KEY = 'cloudnav_data_cache';
 const AUTH_KEY = 'cloudnav_auth_token';
@@ -172,6 +177,8 @@ function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSearchConfigModalOpen, setIsSearchConfigModalOpen] = useState(false);
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [catAuthModalData, setCatAuthModalData] = useState<Category | null>(null);
   const [pendingProtectedCategoryId, setPendingProtectedCategoryId] = useState<string | null>(null);
   
@@ -181,7 +188,7 @@ function App() {
   
   // Sync State
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [authToken, setAuthToken] = useState<string>('');
+  const [authToken, setAuthToken] = useState<string>(IS_LOCAL_DEV ? 'dev-local' : '');
   const [requiresAuth, setRequiresAuth] = useState<boolean | null>(null); // null表示未检查，true表示需要认证，false表示不需要
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
@@ -588,8 +595,8 @@ function App() {
       document.documentElement.classList.add('dark');
     }
 
-    // Load Token and check expiry
-    const savedToken = localStorage.getItem(AUTH_KEY);
+    // Load Token and check expiry（本地开发跳过，避免残留的过期 token 清空 dev-local）
+    const savedToken = IS_LOCAL_DEV ? null : localStorage.getItem(AUTH_KEY);
     const lastLoginTime = localStorage.getItem(AUTH_TIME_KEY);
     
     if (savedToken) {
@@ -980,8 +987,13 @@ function App() {
       return;
     }
     
-    if (confirm(`确定要删除选中的 ${selectedLinks.size} 个链接吗？`)) {
-      const newLinks = links.filter(link => !selectedLinks.has(link.id));
+    if (confirm(`确定要将选中的 ${selectedLinks.size} 个链接移入垃圾站吗？`)) {
+      const now = Date.now();
+      const newLinks = links.map(link =>
+        selectedLinks.has(link.id)
+          ? { ...link, deleted: true, deletedAt: now, deletedReason: '手动删除', pinned: false }
+          : link
+      );
       updateData(newLinks, categories);
       setSelectedLinks(new Set());
       setIsBatchEditMode(false);
@@ -1437,8 +1449,113 @@ function App() {
 
   const handleDeleteLink = (id: string) => {
     if (!authToken) { setIsAuthOpen(true); return; }
-    if (confirm('确定删除此链接吗?')) {
+    if (confirm('确定将此链接移入垃圾站吗?')) {
+      const now = Date.now();
+      updateData(
+        links.map(l => l.id === id ? { ...l, deleted: true, deletedAt: now, deletedReason: '手动删除', pinned: false } : l),
+        categories
+      );
+    }
+  };
+
+  // --- 垃圾站操作 ---
+  const handleRestoreFromTrash = (id: string) => {
+    if (!authToken) { setIsAuthOpen(true); return; }
+    updateData(
+      links.map(l => l.id === id ? { ...l, deleted: false, deletedAt: undefined, deletedReason: undefined } : l),
+      categories
+    );
+  };
+
+  const handlePermanentDelete = (id: string) => {
+    if (!authToken) { setIsAuthOpen(true); return; }
+    if (confirm('彻底删除后无法恢复，确定吗?')) {
       updateData(links.filter(l => l.id !== id), categories);
+    }
+  };
+
+  const handleEmptyTrash = () => {
+    if (!authToken) { setIsAuthOpen(true); return; }
+    const trashCount = links.filter(l => l.deleted).length;
+    if (trashCount === 0) return;
+    if (confirm(`确定清空垃圾站吗？将永久删除 ${trashCount} 个链接，无法恢复。`)) {
+      updateData(links.filter(l => !l.deleted), categories);
+    }
+  };
+
+  const handleRestoreAllTrash = () => {
+    if (!authToken) { setIsAuthOpen(true); return; }
+    updateData(
+      links.map(l => l.deleted ? { ...l, deleted: false, deletedAt: undefined, deletedReason: undefined } : l),
+      categories
+    );
+  };
+
+  // AI 智能清理：本地精确去重 + AI 相似/低质判断，命中项移入垃圾站
+  const handleAICleanup = async () => {
+    if (!authToken) { setIsAuthOpen(true); return; }
+    if (isCleaningUp) return;
+
+    setIsCleaningUp(true);
+    try {
+      const active = links.filter(l => !l.deleted);
+      const now = Date.now();
+      const toTrash = new Map<string, string>(); // id -> reason
+
+      // 1) 本地精确去重：同一 URL（忽略末尾斜杠/协议差异）保留最早创建的一条
+      const normalizeUrl = (u: string) =>
+        u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      const seen = new Map<string, LinkItem>();
+      active.forEach(l => {
+        const key = normalizeUrl(l.url);
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, l);
+        } else {
+          // 保留更早创建的，另一条进垃圾站
+          const older = existing.createdAt <= l.createdAt ? existing : l;
+          const newer = older === existing ? l : existing;
+          seen.set(key, older);
+          toTrash.set(newer.id, '重复链接');
+        }
+      });
+
+      // 2) AI 判断：仅对尚未被标记的活跃链接送审
+      if (aiConfig.apiKey) {
+        const remaining = active.filter(l => !toTrash.has(l.id));
+        const aiIds = await findCleanupCandidates(
+          remaining.map(l => ({ id: l.id, title: l.title, url: l.url, description: l.description })),
+          aiConfig
+        );
+        aiIds.forEach(id => { if (!toTrash.has(id)) toTrash.set(id, 'AI 建议清理'); });
+      }
+
+      if (toTrash.size === 0) {
+        alert(aiConfig.apiKey ? '未发现重复或需要清理的链接 👍' : '未发现重复链接。配置 AI 后可进一步智能清理。');
+        return;
+      }
+
+      const dupCount = Array.from(toTrash.values()).filter(r => r === '重复链接').length;
+      const aiCount = toTrash.size - dupCount;
+      const ok = confirm(
+        `扫描完成，发现 ${toTrash.size} 个可清理链接` +
+        `（重复 ${dupCount} 个${aiCount > 0 ? `，AI 建议 ${aiCount} 个` : ''}）。\n` +
+        `确定全部移入垃圾站吗？（可随时恢复）`
+      );
+      if (!ok) return;
+
+      updateData(
+        links.map(l => toTrash.has(l.id)
+          ? { ...l, deleted: true, deletedAt: now, deletedReason: toTrash.get(l.id), pinned: false }
+          : l),
+        categories
+      );
+      setIsTrashModalOpen(true);
+    } catch (e) {
+      console.error('AI cleanup failed', e);
+      alert('智能清理失败，请稍后重试');
+    } finally {
+      setIsCleaningUp(false);
     }
   };
 
@@ -1562,12 +1679,14 @@ function App() {
           setSidebarOpen(false);
           return;
       }
+      setSelectedTag(null);
       setSelectedCategory(cat.id);
       setSidebarOpen(false);
   };
 
   const handleUnlockCategory = (catId: string) => {
       setUnlockedCategoryIds(prev => new Set(prev).add(catId));
+      setSelectedTag(null);
       setSelectedCategory(catId);
   };
 
@@ -1969,7 +2088,7 @@ function App() {
 
   const pinnedLinks = useMemo(() => {
       // Don't show pinned links if they belong to a locked category
-      const filteredPinnedLinks = links.filter(l => l.pinned && !isCategoryLocked(l.categoryId));
+      const filteredPinnedLinks = links.filter(l => l.pinned && !l.deleted && !isCategoryLocked(l.categoryId));
       // 按照pinnedOrder字段排序，如果没有pinnedOrder字段则按创建时间排序
       return filteredPinnedLinks.sort((a, b) => {
         // 如果有pinnedOrder字段，则使用pinnedOrder排序
@@ -1986,15 +2105,20 @@ function App() {
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
-    links.forEach(l => l.tags?.forEach(t => tagSet.add(t)));
+    links.forEach(l => { if (!l.deleted) l.tags?.forEach(t => tagSet.add(t)); });
     return Array.from(tagSet).sort();
+  }, [links]);
+
+  // 垃圾站：已软删除的链接
+  const trashedLinks = useMemo(() => {
+    return links.filter(l => l.deleted).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
   }, [links]);
 
   const displayedLinks = useMemo(() => {
     let result = links;
 
-    // Security Filter: Always hide links from locked categories
-    result = result.filter(l => !isCategoryLocked(l.categoryId));
+    // Security Filter: hide trashed links and links from locked categories
+    result = result.filter(l => !l.deleted && !isCategoryLocked(l.categoryId));
 
     // Search Filter
     if (searchQuery.trim()) {
@@ -2006,14 +2130,12 @@ function App() {
       );
     }
 
-    // Category Filter
-    if (selectedCategory !== 'all') {
-      result = result.filter(l => l.categoryId === selectedCategory);
-    }
-
-    // Tag Filter
+    // Tag Filter（全局：选中标签时跨所有分类筛选，忽略当前分类）
     if (selectedTag) {
       result = result.filter(l => l.tags?.includes(selectedTag));
+    } else if (selectedCategory !== 'all') {
+      // Category Filter
+      result = result.filter(l => l.categoryId === selectedCategory);
     }
 
     return result.sort((a, b) => {
@@ -2033,11 +2155,16 @@ function App() {
     
     // 获取其他目录中匹配的链接
     const otherLinks = links.filter(link => {
+      // 排除已删除（垃圾站）的链接
+      if (link.deleted) {
+        return false;
+      }
+
       // 排除当前目录的链接
       if (link.categoryId === selectedCategory) {
         return false;
       }
-      
+
       // 排除锁定的目录
       if (isCategoryLocked(link.categoryId)) {
         return false;
@@ -2446,7 +2573,7 @@ function App() {
               {allTags.map(tag => (
                 <button
                   key={tag}
-                  onClick={() => { setSelectedTag(selectedTag === tag ? null : tag); setSidebarOpen(false); }}
+                  onClick={() => { setSelectedTag(selectedTag === tag ? null : tag); setSelectedCategory('all'); setSidebarOpen(false); }}
                   className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
                     selectedTag === tag
                       ? 'bg-blue-500 text-white'
@@ -2461,8 +2588,8 @@ function App() {
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
             
-            <div className="grid grid-cols-3 gap-2 mb-2">
-                <button 
+            <div className="grid grid-cols-4 gap-2 mb-2">
+                <button
                     onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsImportModalOpen(true); }}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="导入书签"
@@ -2470,8 +2597,8 @@ function App() {
                     <Upload size={14} />
                     <span>导入</span>
                 </button>
-                
-                <button 
+
+                <button
                     onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsBackupModalOpen(true); }}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="备份与恢复"
@@ -2480,7 +2607,21 @@ function App() {
                     <span>备份</span>
                 </button>
 
-                <button 
+                <button
+                    onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsTrashModalOpen(true); }}
+                    className="relative flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
+                    title="垃圾站"
+                >
+                    <Trash2 size={14} />
+                    <span>垃圾</span>
+                    {trashedLinks.length > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                            {trashedLinks.length}
+                        </span>
+                    )}
+                </button>
+
+                <button
                     onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsSettingsModalOpen(true); }}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="AI 设置"
@@ -2765,7 +2906,7 @@ function App() {
             )}
 
             {/* 1. Pinned Area (Custom Top Area) */}
-            {pinnedLinks.length > 0 && !searchQuery && (selectedCategory === 'all') && (
+            {pinnedLinks.length > 0 && !searchQuery && !selectedTag && (selectedCategory === 'all') && (
                 <section>
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
@@ -2840,7 +2981,7 @@ function App() {
             )}
 
             {/* 2. Main Grid */}
-            {(selectedCategory !== 'all' || searchQuery) && (
+            {(selectedCategory !== 'all' || searchQuery || selectedTag) && (
             <section>
                  {(!pinnedLinks.length && !searchQuery && selectedCategory === 'all') && (
                     <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg flex items-center justify-between">
@@ -2856,8 +2997,18 @@ function App() {
 
                  <div className="flex items-center justify-between mb-4">
                      <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                         {selectedCategory === 'all' 
-                            ? (searchQuery ? '搜索结果' : '所有链接') 
+                         {selectedTag
+                            ? (
+                                <>
+                                    <Tag size={14} className="text-blue-500" />
+                                    #{selectedTag}
+                                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-full">
+                                        {displayedLinks.length}
+                                    </span>
+                                </>
+                            )
+                            : selectedCategory === 'all'
+                            ? (searchQuery ? '搜索结果' : '所有链接')
                             : (
                                 <>
                                     {categories.find(c => c.id === selectedCategory)?.name}
@@ -3058,6 +3209,7 @@ function App() {
             initialData={editingLink || (prefillLink as LinkItem)}
             aiConfig={aiConfig}
             defaultCategoryId={selectedCategory !== 'all' ? selectedCategory : undefined}
+            existingTags={allTags}
           />
 
           {/* 右键菜单 */}
@@ -3084,8 +3236,24 @@ function App() {
           <CommandPalette
             isOpen={isCommandPaletteOpen}
             onClose={() => setIsCommandPaletteOpen(false)}
-            links={links}
+            links={links.filter(l => !l.deleted)}
             categories={categories}
+            aiConfig={aiConfig}
+          />
+
+          {/* 垃圾站 */}
+          <TrashModal
+            isOpen={isTrashModalOpen}
+            onClose={() => setIsTrashModalOpen(false)}
+            trashedLinks={trashedLinks}
+            categories={categories}
+            onRestore={handleRestoreFromTrash}
+            onPermanentDelete={handlePermanentDelete}
+            onEmptyTrash={handleEmptyTrash}
+            onRestoreAll={handleRestoreAllTrash}
+            onAICleanup={handleAICleanup}
+            isCleaningUp={isCleaningUp}
+            aiConfigured={!!aiConfig.apiKey}
           />
       </>
       )}

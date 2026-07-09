@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sparkles, Loader2, Pin, Wand2, Trash2, Tag } from 'lucide-react';
 import { LinkItem, Category, AIConfig } from '../types';
-import { generateLinkDescription, suggestCategory } from '../services/geminiService';
+import { generateLinkDescription, suggestCategory, suggestTags } from '../services/geminiService';
 
 interface LinkModalProps {
   isOpen: boolean;
@@ -12,9 +12,10 @@ interface LinkModalProps {
   initialData?: LinkItem;
   aiConfig: AIConfig;
   defaultCategoryId?: string;
+  existingTags?: string[];
 }
 
-const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete, categories, initialData, aiConfig, defaultCategoryId }) => {
+const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete, categories, initialData, aiConfig, defaultCategoryId, existingTags = [] }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
@@ -189,12 +190,21 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
     try {
         const descPromise = generateLinkDescription(title, url, aiConfig);
         const catPromise = suggestCategory(title, url, categories, aiConfig);
-        
-        const [desc, cat] = await Promise.all([descPromise, catPromise]);
-        
+        const tagsPromise = suggestTags(title, url, existingTags, aiConfig);
+
+        const [desc, cat, aiTags] = await Promise.all([descPromise, catPromise, tagsPromise]);
+
         if (desc) setDescription(desc);
         if (cat) setCategoryId(cat);
-        
+        if (aiTags.length > 0) {
+            // 合并 AI 建议标签，去重
+            setTags(prev => {
+                const merged = [...prev];
+                aiTags.forEach(t => { if (!merged.includes(t)) merged.push(t); });
+                return merged;
+            });
+        }
+
     } catch (e) {
         console.error("AI Assist failed", e);
     } finally {
