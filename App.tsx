@@ -1972,11 +1972,19 @@ function App() {
       });
   }, [links, categories]);
 
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    links.forEach(l => l.tags?.forEach(t => tagSet.add(t)));
-    return Array.from(tagSet).sort();
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    links.forEach(l => l.tags?.forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+    return counts;
   }, [links]);
+
+  const allTags = useMemo(() => {
+    // Sort by reference count desc, then by name for stable ordering on ties
+    return Array.from(tagCounts.keys()).sort((a: string, b: string) => {
+      const d = (tagCounts.get(b) || 0) - (tagCounts.get(a) || 0);
+      return d !== 0 ? d : a.localeCompare(b);
+    });
+  }, [tagCounts]);
 
   const displayedLinks = useMemo(() => {
     let result = links;
@@ -2448,6 +2456,7 @@ function App() {
               {allTags.map(tag => (
                 <button
                   key={tag}
+                  title={`${tag} · 被 ${tagCounts.get(tag) || 0} 个链接引用`}
                   onClick={() => { setSelectedTag(selectedTag === tag ? null : tag); setSelectedCategory('all'); setSidebarOpen(false); }}
                   className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
                     selectedTag === tag
