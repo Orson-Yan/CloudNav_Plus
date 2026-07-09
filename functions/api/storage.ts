@@ -103,16 +103,12 @@ const normalizeDomain = (rawDomain: string | null) => {
   }
 };
 
-const toBase64 = (buffer: ArrayBuffer) => {
+const toBase64 = (buffer: ArrayBuffer): string => {
   const bytes = new Uint8Array(buffer);
   let binary = '';
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-
   return btoa(binary);
 };
 
@@ -233,6 +229,14 @@ export const onRequestGet = async (context: { env: Env; request: Request }) => {
       
       // 从KV中获取缓存的图标
       const cachedIcon = await env.CLOUDNAV_KV.get(`favicon:${domain}`);
+
+      // 'none' 是负缓存哨兵值，表示已确认该域名无 favicon
+      if (cachedIcon === 'none') {
+        return new Response(JSON.stringify({ icon: null, cached: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
       if (cachedIcon && (!shouldFetch || cachedIcon.startsWith('data:'))) {
         return new Response(JSON.stringify({ icon: cachedIcon, cached: true }), {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -249,13 +253,16 @@ export const onRequestGet = async (context: { env: Env; request: Request }) => {
           });
         }
 
+        // 缓存负结果，TTL 1天，避免下次重复发起外部请求
+        await env.CLOUDNAV_KV.put(`favicon:${domain}`, 'none', { expirationTtl: 86400 });
+
         if (cachedIcon) {
           return new Response(JSON.stringify({ icon: cachedIcon, cached: true }), {
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
         }
       }
-      
+
       // 如果没有缓存，返回空结果
       return new Response(JSON.stringify({ icon: null, cached: false }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders },

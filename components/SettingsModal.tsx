@@ -243,11 +243,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     return JSON.stringify(json, null, 2);
   };
 
-const extBackgroundJs = `// background.js - ${localSiteSettings.navTitle || 'CloudNav'} Assistant v7.6
+const extBackgroundJs = `// background.js - ${(localSiteSettings.navTitle || 'CloudNav').replace(/`/g, '\\`')} Assistant v7.6
 const CONFIG = {
-  apiBase: "${domain}",
-  password: "${password}",
-  siteName: "${(localSiteSettings.navTitle || 'CloudNav').replace(/"/g, '\\"')}"
+  apiBase: ${JSON.stringify(domain)},
+  password: ${JSON.stringify(password)},
+  siteName: ${JSON.stringify(localSiteSettings.navTitle || 'CloudNav')}
 };
 const MODE_KEY = 'cloudnav_ui_mode';
 const POPUP_PATH = 'popup.html';

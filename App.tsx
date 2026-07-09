@@ -129,11 +129,13 @@ function App() {
       if (saved) {
           try {
               return JSON.parse(saved);
-          } catch (e) {}
+          } catch (e) {
+              console.warn('Failed to parse stored AI config, using defaults:', e);
+          }
       }
       return {
           provider: 'gemini',
-          apiKey: process.env.API_KEY || '', 
+          apiKey: process.env.API_KEY || '',
           baseUrl: '',
           model: 'gemini-2.5-flash'
       };
@@ -145,7 +147,9 @@ function App() {
       if (saved) {
           try {
               return JSON.parse(saved);
-          } catch (e) {}
+          } catch (e) {
+              console.warn('Failed to parse stored site settings, using defaults:', e);
+          }
       }
       return {
           title: '',
@@ -467,8 +471,9 @@ function App() {
   };
 
   // 加载链接图标缓存
-  const loadLinkIcons = async (linksToLoad: LinkItem[], categoriesToUse: Category[]) => {
-    if (!authToken) return; // 只有在已登录状态下才加载图标缓存
+  const loadLinkIcons = async (linksToLoad: LinkItem[], categoriesToUse: Category[], token?: string) => {
+    const effectiveToken = token || authToken;
+    if (!effectiveToken) return; // 只有在已登录状态下才加载图标缓存
     
     const updatedLinks = [...linksToLoad];
     const domainsToFetch = new Set<string>();
@@ -594,7 +599,9 @@ function App() {
     if (savedWebDav) {
         try {
             setWebDavConfig(JSON.parse(savedWebDav));
-        } catch (e) {}
+        } catch (e) {
+            console.warn('Failed to parse stored WebDAV config, using defaults:', e);
+        }
     }
 
     // Handle URL Params for Bookmarklet (Add Link)
@@ -1068,15 +1075,15 @@ function App() {
                         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
                         
                         // 加载链接图标缓存
-                        loadLinkIcons(data.links, data.categories || DEFAULT_CATEGORIES);
+                        loadLinkIcons(data.links, data.categories || DEFAULT_CATEGORIES, password);
                     } else {
                         // 如果服务器没有数据，使用本地数据
                         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ links, categories }));
                         // 并将本地数据同步到服务器
                         syncToCloud(links, categories, password);
-                        
+
                         // 加载链接图标缓存
-                        loadLinkIcons(links, categories);
+                        loadLinkIcons(links, categories, password);
                     }
                 } 
             } catch (e) {
@@ -1301,8 +1308,13 @@ function App() {
           return link;
         });
         
-        // 按照order字段重新排序
-        updatedLinks.sort((a, b) => (a.order || 0) - (b.order || 0));
+        // 按照order字段重新排序；没有order的链接保持相对位置（稳定排序）
+        updatedLinks.sort((a, b) => {
+          if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+          if (a.order !== undefined) return -1;
+          if (b.order !== undefined) return 1;
+          return 0;
+        });
         
         updateData(updatedLinks, categories);
       }
@@ -1573,23 +1585,30 @@ function App() {
   };
 
   // --- WebDAV Config ---
-  const handleSaveWebDavConfig = (config: WebDavConfig) => {
+  const handleSaveWebDavConfig = async (config: WebDavConfig) => {
       setWebDavConfig(config);
       localStorage.setItem(WEBDAV_CONFIG_KEY, JSON.stringify(config));
 
       if (authToken) {
-          fetch('/api/storage', {
-              method: 'POST',
-              headers: buildAuthHeaders(authToken, {
-                  'Content-Type': 'application/json',
-              }),
-              body: JSON.stringify({
-                  saveConfig: 'webdav',
-                  config,
-              })
-          }).catch((error) => {
+          try {
+              const res = await fetch('/api/storage', {
+                  method: 'POST',
+                  headers: buildAuthHeaders(authToken, {
+                      'Content-Type': 'application/json',
+                  }),
+                  body: JSON.stringify({
+                      saveConfig: 'webdav',
+                      config,
+                  })
+              });
+              if (!res.ok) {
+                  console.error('Failed to save WebDAV config to KV:', res.statusText);
+                  setSyncStatus('error');
+              }
+          } catch (error) {
               console.error('Error saving WebDAV config to KV:', error);
-          });
+              setSyncStatus('error');
+          }
       }
   };
 
