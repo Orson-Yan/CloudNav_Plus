@@ -2444,7 +2444,7 @@ function App() {
                 >清除</button>
               )}
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto scrollbar-hide">
               {allTags.map(tag => (
                 <button
                   key={tag}
