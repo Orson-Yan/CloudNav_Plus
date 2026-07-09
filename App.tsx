@@ -674,13 +674,9 @@ function App() {
                     setIsCheckingAuth(false);
                     return;
                 }
-            } else {
-                // API 不可达（本地开发）：无需认证
-                setRequiresAuth(false);
             }
         } catch (e) {
-            // 网络异常（本地开发）：无需认证
-            setRequiresAuth(false);
+            console.warn("Failed to check auth requirement.", e);
         }
         
         // 获取数据
