@@ -193,6 +193,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, links,
                     ? 'bg-blue-50 dark:bg-blue-900/30'
                     : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                 }`}
+                style={index === activeIndex ? { backgroundColor: 'var(--theme-50)' } : undefined}
               >
                 {/* 图标 */}
                 <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center">

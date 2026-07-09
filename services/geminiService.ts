@@ -203,57 +203,6 @@ export const semanticSearchLinks = async (
  * Asks AI to identify links worth cleaning up (dead-looking, low-value or redundant).
  * Returns an array of link ids. Exact-duplicate detection is handled locally by the caller.
  */
-export const findCleanupCandidates = async (
-    items: { id: string; title: string; url: string; description?: string }[],
-    config: AIConfig
-): Promise<string[]> => {
-    if (!config.apiKey || items.length === 0) return [];
-
-    const list = items.map(i => `${i.id} | ${i.title} | ${i.url}${i.description ? ' | ' + i.description : ''}`).join('\n');
-    const prompt = `
-        Below is a list of bookmarks, one per line, formatted as: id | title | url | description
-
-        ${list}
-
-        Identify bookmarks that are good candidates for cleanup, meaning any of:
-        - clearly redundant / near-duplicate of another entry
-        - broken or placeholder-looking (e.g. "test", "新建", "无标题", localhost, example.com)
-        - obviously low value
-
-        Be conservative: only include entries you are fairly confident about. It is fine to return none.
-        Return ONLY a comma-separated list of the matching ids. No other text. If none, return an empty response.
-    `;
-
-    try {
-        let raw = '';
-        if (config.provider === 'gemini') {
-            const ai = new GoogleGenAI({ apiKey: config.apiKey });
-            const modelName = config.model || 'gemini-2.5-flash';
-            const response: GenerateContentResponse = await ai.models.generateContent({
-                model: modelName,
-                contents: `Task: Review bookmarks for cleanup.\n${prompt}`,
-            });
-            raw = response.text ? response.text.trim() : '';
-        } else {
-            raw = await callOpenAICompatible(
-                config,
-                "You are a careful librarian reviewing bookmarks. You only output a comma-separated list of ids.",
-                prompt
-            );
-        }
-
-        if (!raw) return [];
-        const validIds = new Set(items.map(i => i.id));
-        return raw
-            .split(/[,，\n]/)
-            .map(s => s.trim())
-            .filter(id => validIds.has(id));
-    } catch (e) {
-        console.error(e);
-        return [];
-    }
-};
-
 /**
  * Suggests a category
  */

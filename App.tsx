@@ -38,12 +38,10 @@ import SearchConfigModal from './components/SearchConfigModal';
 import ContextMenu from './components/ContextMenu';
 import QRCodeModal from './components/QRCodeModal';
 import CommandPalette from './components/CommandPalette';
-import TrashModal from './components/TrashModal';
-import { findCleanupCandidates } from './services/geminiService';
 
 // --- 配置项 ---
 // 项目核心仓库地址
-const GITHUB_REPO_URL = 'https://github.com/Aaowu/CloudNav-Oorz';
+const GITHUB_REPO_URL = 'https://github.com/Orson-Yan/CloudNav_Plus';
 
 // 本地开发（无 Pages Functions 后端）时跳过密码，避免因缺少后端而被拦在登录页
 const IS_LOCAL_DEV = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -165,7 +163,7 @@ function App() {
           cardStyle: 'detailed' as const,
           requirePasswordOnVisit: false,
           passwordExpiryDays: 7,
-          background: ''
+          themeColor: ''
       };
   });
   
@@ -177,8 +175,6 @@ function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSearchConfigModalOpen, setIsSearchConfigModalOpen] = useState(false);
-  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
-  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [catAuthModalData, setCatAuthModalData] = useState<Category | null>(null);
   const [pendingProtectedCategoryId, setPendingProtectedCategoryId] = useState<string | null>(null);
   
@@ -392,8 +388,8 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     
-    // 在批量编辑模式下禁用右键菜单
-    if (isBatchEditMode) return;
+    // 未登录或批量编辑模式下禁用右键菜单
+    if (!authToken || isBatchEditMode) return;
     
     setContextMenu({
       isOpen: true,
@@ -745,7 +741,8 @@ function App() {
                         favicon: websiteConfigData.favicon || prev.favicon,
                         cardStyle: websiteConfigData.cardStyle || prev.cardStyle,
                         requirePasswordOnVisit: websiteConfigData.requirePasswordOnVisit !== undefined ? websiteConfigData.requirePasswordOnVisit : prev.requirePasswordOnVisit,
-                        passwordExpiryDays: websiteConfigData.passwordExpiryDays !== undefined ? websiteConfigData.passwordExpiryDays : prev.passwordExpiryDays
+                        passwordExpiryDays: websiteConfigData.passwordExpiryDays !== undefined ? websiteConfigData.passwordExpiryDays : prev.passwordExpiryDays,
+                        themeColor: websiteConfigData.themeColor || prev.themeColor
                     }));
                 }
             }
@@ -987,13 +984,8 @@ function App() {
       return;
     }
     
-    if (confirm(`确定要将选中的 ${selectedLinks.size} 个链接移入垃圾站吗？`)) {
-      const now = Date.now();
-      const newLinks = links.map(link =>
-        selectedLinks.has(link.id)
-          ? { ...link, deleted: true, deletedAt: now, deletedReason: '手动删除', pinned: false }
-          : link
-      );
+    if (confirm(`确定要删除选中的 ${selectedLinks.size} 个链接吗？`)) {
+      const newLinks = links.filter(link => !selectedLinks.has(link.id));
       updateData(newLinks, categories);
       setSelectedLinks(new Set());
       setIsBatchEditMode(false);
@@ -1063,7 +1055,8 @@ function App() {
                             favicon: websiteConfigData.favicon || prev.favicon,
                             cardStyle: websiteConfigData.cardStyle || prev.cardStyle,
                             requirePasswordOnVisit: websiteConfigData.requirePasswordOnVisit !== undefined ? websiteConfigData.requirePasswordOnVisit : prev.requirePasswordOnVisit,
-                            passwordExpiryDays: websiteConfigData.passwordExpiryDays !== undefined ? websiteConfigData.passwordExpiryDays : prev.passwordExpiryDays
+                            passwordExpiryDays: websiteConfigData.passwordExpiryDays !== undefined ? websiteConfigData.passwordExpiryDays : prev.passwordExpiryDays,
+                            themeColor: websiteConfigData.themeColor || prev.themeColor
                         }));
                     }
                 }
@@ -1449,113 +1442,8 @@ function App() {
 
   const handleDeleteLink = (id: string) => {
     if (!authToken) { setIsAuthOpen(true); return; }
-    if (confirm('确定将此链接移入垃圾站吗?')) {
-      const now = Date.now();
-      updateData(
-        links.map(l => l.id === id ? { ...l, deleted: true, deletedAt: now, deletedReason: '手动删除', pinned: false } : l),
-        categories
-      );
-    }
-  };
-
-  // --- 垃圾站操作 ---
-  const handleRestoreFromTrash = (id: string) => {
-    if (!authToken) { setIsAuthOpen(true); return; }
-    updateData(
-      links.map(l => l.id === id ? { ...l, deleted: false, deletedAt: undefined, deletedReason: undefined } : l),
-      categories
-    );
-  };
-
-  const handlePermanentDelete = (id: string) => {
-    if (!authToken) { setIsAuthOpen(true); return; }
-    if (confirm('彻底删除后无法恢复，确定吗?')) {
+    if (confirm('确定删除此链接吗?')) {
       updateData(links.filter(l => l.id !== id), categories);
-    }
-  };
-
-  const handleEmptyTrash = () => {
-    if (!authToken) { setIsAuthOpen(true); return; }
-    const trashCount = links.filter(l => l.deleted).length;
-    if (trashCount === 0) return;
-    if (confirm(`确定清空垃圾站吗？将永久删除 ${trashCount} 个链接，无法恢复。`)) {
-      updateData(links.filter(l => !l.deleted), categories);
-    }
-  };
-
-  const handleRestoreAllTrash = () => {
-    if (!authToken) { setIsAuthOpen(true); return; }
-    updateData(
-      links.map(l => l.deleted ? { ...l, deleted: false, deletedAt: undefined, deletedReason: undefined } : l),
-      categories
-    );
-  };
-
-  // AI 智能清理：本地精确去重 + AI 相似/低质判断，命中项移入垃圾站
-  const handleAICleanup = async () => {
-    if (!authToken) { setIsAuthOpen(true); return; }
-    if (isCleaningUp) return;
-
-    setIsCleaningUp(true);
-    try {
-      const active = links.filter(l => !l.deleted);
-      const now = Date.now();
-      const toTrash = new Map<string, string>(); // id -> reason
-
-      // 1) 本地精确去重：同一 URL（忽略末尾斜杠/协议差异）保留最早创建的一条
-      const normalizeUrl = (u: string) =>
-        u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-      const seen = new Map<string, LinkItem>();
-      active.forEach(l => {
-        const key = normalizeUrl(l.url);
-        const existing = seen.get(key);
-        if (!existing) {
-          seen.set(key, l);
-        } else {
-          // 保留更早创建的，另一条进垃圾站
-          const older = existing.createdAt <= l.createdAt ? existing : l;
-          const newer = older === existing ? l : existing;
-          seen.set(key, older);
-          toTrash.set(newer.id, '重复链接');
-        }
-      });
-
-      // 2) AI 判断：仅对尚未被标记的活跃链接送审
-      if (aiConfig.apiKey) {
-        const remaining = active.filter(l => !toTrash.has(l.id));
-        const aiIds = await findCleanupCandidates(
-          remaining.map(l => ({ id: l.id, title: l.title, url: l.url, description: l.description })),
-          aiConfig
-        );
-        aiIds.forEach(id => { if (!toTrash.has(id)) toTrash.set(id, 'AI 建议清理'); });
-      }
-
-      if (toTrash.size === 0) {
-        alert(aiConfig.apiKey ? '未发现重复或需要清理的链接 👍' : '未发现重复链接。配置 AI 后可进一步智能清理。');
-        return;
-      }
-
-      const dupCount = Array.from(toTrash.values()).filter(r => r === '重复链接').length;
-      const aiCount = toTrash.size - dupCount;
-      const ok = confirm(
-        `扫描完成，发现 ${toTrash.size} 个可清理链接` +
-        `（重复 ${dupCount} 个${aiCount > 0 ? `，AI 建议 ${aiCount} 个` : ''}）。\n` +
-        `确定全部移入垃圾站吗？（可随时恢复）`
-      );
-      if (!ok) return;
-
-      updateData(
-        links.map(l => toTrash.has(l.id)
-          ? { ...l, deleted: true, deletedAt: now, deletedReason: toTrash.get(l.id), pinned: false }
-          : l),
-        categories
-      );
-      setIsTrashModalOpen(true);
-    } catch (e) {
-      console.error('AI cleanup failed', e);
-      alert('智能清理失败，请稍后重试');
-    } finally {
-      setIsCleaningUp(false);
     }
   };
 
@@ -2088,7 +1976,7 @@ function App() {
 
   const pinnedLinks = useMemo(() => {
       // Don't show pinned links if they belong to a locked category
-      const filteredPinnedLinks = links.filter(l => l.pinned && !l.deleted && !isCategoryLocked(l.categoryId));
+      const filteredPinnedLinks = links.filter(l => l.pinned && !isCategoryLocked(l.categoryId));
       // 按照pinnedOrder字段排序，如果没有pinnedOrder字段则按创建时间排序
       return filteredPinnedLinks.sort((a, b) => {
         // 如果有pinnedOrder字段，则使用pinnedOrder排序
@@ -2105,20 +1993,15 @@ function App() {
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
-    links.forEach(l => { if (!l.deleted) l.tags?.forEach(t => tagSet.add(t)); });
+    links.forEach(l => l.tags?.forEach(t => tagSet.add(t)));
     return Array.from(tagSet).sort();
-  }, [links]);
-
-  // 垃圾站：已软删除的链接
-  const trashedLinks = useMemo(() => {
-    return links.filter(l => l.deleted).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
   }, [links]);
 
   const displayedLinks = useMemo(() => {
     let result = links;
 
-    // Security Filter: hide trashed links and links from locked categories
-    result = result.filter(l => !l.deleted && !isCategoryLocked(l.categoryId));
+    // Security Filter: Always hide links from locked categories
+    result = result.filter(l => !isCategoryLocked(l.categoryId));
 
     // Search Filter
     if (searchQuery.trim()) {
@@ -2155,11 +2038,6 @@ function App() {
     
     // 获取其他目录中匹配的链接
     const otherLinks = links.filter(link => {
-      // 排除已删除（垃圾站）的链接
-      if (link.deleted) {
-        return false;
-      }
-
       // 排除当前目录的链接
       if (link.categoryId === selectedCategory) {
         return false;
@@ -2364,8 +2242,8 @@ function App() {
           </a>
         )}
 
-        {/* Hover Actions (Absolute Right) - 在批量编辑模式下隐藏 */}
-        {!isBatchEditMode && (
+        {/* Hover Actions (Absolute Right) - 未登录或批量编辑模式下隐藏 */}
+        {authToken && !isBatchEditMode && (
           <div className={`flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 dark:bg-blue-900/20 backdrop-blur-sm rounded-md p-1 absolute ${
             isDetailedView ? 'top-3 right-3' : 'top-1/2 -translate-y-1/2 right-2'
           }`}>
@@ -2384,6 +2262,17 @@ function App() {
     );
   };
 
+  const themeStyle = useMemo(() => {
+    if (!siteSettings.themeColor) return undefined;
+    return {
+      '--theme-500': siteSettings.themeColor,
+      '--theme-50': siteSettings.themeColor + '1a',
+      '--theme-100': siteSettings.themeColor + '33',
+      '--theme-200': siteSettings.themeColor + '4d',
+      '--theme-600': siteSettings.themeColor + 'cc',
+    } as React.CSSProperties;
+  }, [siteSettings.themeColor]);
+
   if (isCheckingAuth && requiresAuth === null) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400">
@@ -2393,7 +2282,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden text-slate-900 dark:text-slate-50">
+    <div className="flex h-screen overflow-hidden text-slate-900 dark:text-slate-50" style={themeStyle}>
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 z-[120] will-change-[clip-path,opacity,background-color] transition-[clip-path,opacity,background-color] duration-[620ms]"
@@ -2509,10 +2398,14 @@ function App() {
             <button
               onClick={() => { setSelectedCategory('all'); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                selectedCategory === 'all' 
-                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium' 
+                selectedCategory === 'all'
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
+              style={selectedCategory === 'all' && siteSettings.themeColor ? {
+                backgroundColor: 'var(--theme-50)',
+                color: 'var(--theme-600)',
+              } : undefined}
             >
               <div className="p-1"><Icon name="LayoutGrid" size={18} /></div>
               <span>置顶网站</span>
@@ -2520,13 +2413,15 @@ function App() {
             
             <div className="flex items-center justify-between pt-4 pb-2 px-4">
                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">分类目录</span>
-               <button 
-                  onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsCatManagerOpen(true); }}
+               {authToken && (
+               <button
+                  onClick={() => setIsCatManagerOpen(true)}
                   className="p-1 text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
                   title="管理分类"
                >
                   <Settings size={14} />
                </button>
+               )}
             </div>
 
             {categories.map(cat => {
@@ -2536,12 +2431,19 @@ function App() {
                     key={cat.id}
                     onClick={() => handleCategoryClick(cat)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group ${
-                      selectedCategory === cat.id 
-                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium' 
+                      selectedCategory === cat.id
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
+                    style={selectedCategory === cat.id && siteSettings.themeColor ? {
+                      backgroundColor: 'var(--theme-50)',
+                      color: 'var(--theme-600)',
+                    } : undefined}
                   >
-                    <div className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${selectedCategory === cat.id ? 'bg-blue-100 dark:bg-blue-800' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${selectedCategory === cat.id ? 'bg-blue-100 dark:bg-blue-800' : 'bg-slate-100 dark:bg-slate-800'}`}
+                      style={selectedCategory === cat.id && siteSettings.themeColor ? { backgroundColor: 'var(--theme-100)' } : undefined}
+                    >
                       {isLocked ? <Lock size={16} className="text-amber-500" /> : <Icon name={cat.icon} size={16} />}
                     </div>
                     <span className="truncate flex-1 text-left">{cat.name}</span>
@@ -2550,7 +2452,7 @@ function App() {
                         需登录
                       </span>
                     )}
-                    {selectedCategory === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>}
+                    {selectedCategory === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" style={siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}></div>}
                   </button>
                 );
             })}
@@ -2579,6 +2481,7 @@ function App() {
                       ? 'bg-blue-500 text-white'
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-600'
                   }`}
+                  style={selectedTag === tag && siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}
                 >#{tag}</button>
               ))}
             </div>
@@ -2588,9 +2491,10 @@ function App() {
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
             
-            <div className="grid grid-cols-4 gap-2 mb-2">
+            {authToken && (
+            <div className="grid grid-cols-3 gap-2 mb-2">
                 <button
-                    onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsImportModalOpen(true); }}
+                    onClick={() => setIsImportModalOpen(true)}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="导入书签"
                 >
@@ -2599,7 +2503,7 @@ function App() {
                 </button>
 
                 <button
-                    onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsBackupModalOpen(true); }}
+                    onClick={() => setIsBackupModalOpen(true)}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="备份与恢复"
                 >
@@ -2608,21 +2512,7 @@ function App() {
                 </button>
 
                 <button
-                    onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsTrashModalOpen(true); }}
-                    className="relative flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
-                    title="垃圾站"
-                >
-                    <Trash2 size={14} />
-                    <span>垃圾</span>
-                    {trashedLinks.length > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
-                            {trashedLinks.length}
-                        </span>
-                    )}
-                </button>
-
-                <button
-                    onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsSettingsModalOpen(true); }}
+                    onClick={() => setIsSettingsModalOpen(true)}
                     className="flex flex-col items-center justify-center gap-1 p-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                     title="AI 设置"
                 >
@@ -2630,6 +2520,7 @@ function App() {
                     <span>设置</span>
                 </button>
             </div>
+            )}
             
             <div className="flex items-center justify-between text-xs px-2 mt-2">
                <div className="flex items-center gap-1 text-slate-400">
@@ -2647,7 +2538,7 @@ function App() {
                  title="Fork this project on GitHub"
                >
                  <GitFork size={14} />
-                 <span>Fork 项目 v1.7.1</span>
+                 <span>Fork 项目 v2.0.0</span>
                </a>
             </div>
         </div>
@@ -2656,7 +2547,6 @@ function App() {
       {/* Main Content */}
       <main
         className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative"
-        style={siteSettings.background ? { background: siteSettings.background } : undefined}
       >
         
         {/* Header */}
@@ -2879,15 +2769,18 @@ function App() {
               )}
             </div>
 
-            {/* 添加按钮 - 移动端：搜索框展开时隐藏，桌面端始终显示 */}
+            {/* 添加按钮 - 未登录时隐藏；移动端搜索框展开时隐藏，桌面端始终显示 */}
+            {authToken && (
             <div className={`${isMobileSearchOpen ? 'hidden' : 'flex'}`}>
               <button
-                onClick={() => { if(!authToken) setIsAuthOpen(true); else { setEditingLink(undefined); setIsModalOpen(true); }}}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-full text-sm font-medium shadow-lg shadow-blue-500/30"
+                onClick={() => { setEditingLink(undefined); setIsModalOpen(true); }}
+                className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-full text-sm font-medium shadow-lg shadow-blue-500/30"
+                style={siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}
               >
                 <Plus size={16} /> <span className="hidden sm:inline">添加</span>
               </button>
             </div>
+            )}
           </div>
         </header>
 
@@ -2896,7 +2789,14 @@ function App() {
 
             {/* Tag filter banner */}
             {selectedTag && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300">
+              <div
+                className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300"
+                style={siteSettings.themeColor ? {
+                  backgroundColor: 'var(--theme-50)',
+                  borderColor: 'var(--theme-200)',
+                  color: 'var(--theme-600)',
+                } : undefined}
+              >
                 <Tag size={14} />
                 <span>标签过滤：<strong>#{selectedTag}</strong></span>
                 <button onClick={() => setSelectedTag(null)} className="ml-auto text-blue-400 hover:text-blue-600">
@@ -3020,7 +2920,7 @@ function App() {
                             )
                          }
                      </h2>
-                     {selectedCategory !== 'all' && !isCategoryLocked(selectedCategory) && (
+                     {authToken && selectedCategory !== 'all' && !isCategoryLocked(selectedCategory) && (
                          isSortingMode === selectedCategory ? (
                              <div className="flex gap-2">
                                  <button 
@@ -3236,24 +3136,10 @@ function App() {
           <CommandPalette
             isOpen={isCommandPaletteOpen}
             onClose={() => setIsCommandPaletteOpen(false)}
-            links={links.filter(l => !l.deleted)}
+            links={links}
             categories={categories}
-            aiConfig={aiConfig}
-          />
-
-          {/* 垃圾站 */}
-          <TrashModal
-            isOpen={isTrashModalOpen}
-            onClose={() => setIsTrashModalOpen(false)}
-            trashedLinks={trashedLinks}
-            categories={categories}
-            onRestore={handleRestoreFromTrash}
-            onPermanentDelete={handlePermanentDelete}
-            onEmptyTrash={handleEmptyTrash}
-            onRestoreAll={handleRestoreAllTrash}
-            onAICleanup={handleAICleanup}
-            isCleaningUp={isCleaningUp}
-            aiConfigured={!!aiConfig.apiKey}
+            // 仅登录后才启用 AI 语义搜索，防止匿名访客滥用站主的 API Key
+            aiConfig={authToken ? aiConfig : undefined}
           />
       </>
       )}

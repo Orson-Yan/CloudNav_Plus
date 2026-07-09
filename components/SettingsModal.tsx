@@ -30,7 +30,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       cardStyle: siteSettings?.cardStyle || 'detailed',
       requirePasswordOnVisit: siteSettings?.requirePasswordOnVisit ?? false,
       passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7,
-      background: siteSettings?.background || ''
+      themeColor: siteSettings?.themeColor || ''
   }));
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -55,7 +55,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           cardStyle: siteSettings?.cardStyle || 'detailed',
           requirePasswordOnVisit: siteSettings?.requirePasswordOnVisit ?? false,
           passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7,
-          background: siteSettings?.background || ''
+          themeColor: siteSettings?.themeColor || ''
       };
       setLocalSiteSettings(safeSettings);
 
@@ -122,8 +122,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         return;
     }
 
-    // 需要补全的：缺描述 或 缺标签（仅处理未删除的链接）
-    const missingLinks = links.filter(l => !l.deleted && (!l.description || !l.tags || l.tags.length === 0));
+    // 需要补全的：缺描述 或 缺标签
+    const missingLinks = links.filter(l => !l.description || !l.tags || l.tags.length === 0);
     if (missingLinks.length === 0) {
         alert("所有链接的描述和标签都已补全！");
         return;
@@ -138,7 +138,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     let currentLinks = [...links];
     // 已有标签池，供 AI 复用，保持标签一致性
     const tagPool = new Set<string>();
-    links.forEach(l => { if (!l.deleted) l.tags?.forEach(t => tagPool.add(t)); });
+    links.forEach(l => l.tags?.forEach(t => tagPool.add(t)));
 
     for (let i = 0; i < missingLinks.length; i++) {
         if (shouldStopRef.current) break;
@@ -1266,48 +1266,54 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <p className="text-xs text-slate-500 mt-1">设置为 0 表示永久不退出，默认 7 天后自动退出</p>
                             </div>
 
-                            {/* 自定义背景 */}
+                            {/* 主题颜色 */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">页面背景</label>
-                                {/* 渐变预设 */}
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">主题颜色</label>
                                 <div className="grid grid-cols-5 gap-2 mb-3">
                                     {[
-                                        { label: '默认', value: '' },
-                                        { label: '', value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #2d3748 0%, #1a202c 100%)' },
-                                        { label: '', value: 'linear-gradient(135deg, #e0e0e0 0%, #ffffff 100%)' },
+                                        { label: '默认', value: '', color: '#3b82f6' },
+                                        { label: '', value: '#6366f1', color: '#6366f1' },
+                                        { label: '', value: '#8b5cf6', color: '#8b5cf6' },
+                                        { label: '', value: '#ec4899', color: '#ec4899' },
+                                        { label: '', value: '#ef4444', color: '#ef4444' },
+                                        { label: '', value: '#f97316', color: '#f97316' },
+                                        { label: '', value: '#eab308', color: '#eab308' },
+                                        { label: '', value: '#22c55e', color: '#22c55e' },
+                                        { label: '', value: '#14b8a6', color: '#14b8a6' },
+                                        { label: '', value: '#06b6d4', color: '#06b6d4' },
                                     ].map((preset) => (
                                         <button
                                             key={preset.value}
                                             type="button"
-                                            onClick={() => handleSiteChange('background', preset.value)}
-                                            className={`h-9 rounded-lg border-2 transition-all ${
-                                                localSiteSettings.background === preset.value
-                                                    ? 'border-blue-500 scale-95 shadow-lg'
-                                                    : 'border-slate-200 dark:border-slate-600 hover:border-blue-300'
+                                            onClick={() => handleSiteChange('themeColor', preset.value)}
+                                            className={`h-9 rounded-lg border-2 transition-all flex items-center justify-center ${
+                                                localSiteSettings.themeColor === preset.value
+                                                    ? 'border-slate-800 dark:border-white scale-95 shadow-lg'
+                                                    : 'border-slate-200 dark:border-slate-600 hover:border-slate-400'
                                             }`}
-                                            style={preset.value ? { background: preset.value } : { background: 'repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 4px, #f8fafc 4px, #f8fafc 8px)' }}
-                                            title={preset.label || preset.value || '默认'}
+                                            style={preset.value ? { backgroundColor: preset.color } : { background: 'repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 4px, #f8fafc 4px, #f8fafc 8px)' }}
+                                            title={preset.label || preset.color}
                                         >
-                                            {preset.label && <span className="text-xs font-medium text-slate-600">{preset.label}</span>}
+                                            {preset.label && <span className="text-xs font-medium text-slate-500">{preset.label}</span>}
                                         </button>
                                     ))}
                                 </div>
-                                {/* 自定义值输入 */}
-                                <input
-                                    type="text"
-                                    value={localSiteSettings.background || ''}
-                                    onChange={(e) => handleSiteChange('background', e.target.value)}
-                                    placeholder="自定义 CSS 背景值，如 #f0f0f0 或 url(...)"
-                                    className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">支持任意 CSS background 值：颜色、渐变、图片 URL 等</p>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={localSiteSettings.themeColor || '#3b82f6'}
+                                        onChange={(e) => handleSiteChange('themeColor', e.target.value)}
+                                        className="w-9 h-9 rounded-lg border border-slate-300 dark:border-slate-600 cursor-pointer"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={localSiteSettings.themeColor || ''}
+                                        onChange={(e) => handleSiteChange('themeColor', e.target.value)}
+                                        placeholder="或输入十六进制颜色，如 #667eea"
+                                        className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">选中的颜色将作为按钮、选中态、标签等 UI 元素的强调色。留空使用默认蓝色。</p>
                             </div>
                         </div>
                     </div>
