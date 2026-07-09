@@ -24,12 +24,10 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editPassword, setEditPassword] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editRequireAuth, setEditRequireAuth] = useState(false);
-  
+
   const [newCatName, setNewCatName] = useState('');
-  const [newCatPassword, setNewCatPassword] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Folder');
   const [newCatRequireAuth, setNewCatRequireAuth] = useState(false);
   
@@ -138,7 +136,6 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const startEdit = (cat: Category) => {
     setEditingId(cat.id);
     setEditName(cat.name);
-    setEditPassword(cat.password || '');
     setEditIcon(cat.icon);
     setEditRequireAuth(!!cat.requireAuth);
   };
@@ -149,7 +146,6 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
         ...c, 
         name: editName.trim(),
         icon: editIcon,
-        password: editPassword.trim() || undefined,
         requireAuth: editRequireAuth
     } : c);
     onUpdateCategories(newCats);
@@ -162,12 +158,10 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       id: Date.now().toString(),
       name: newCatName.trim(),
       icon: newCatIcon,
-      password: newCatPassword.trim() || undefined,
       requireAuth: newCatRequireAuth
     };
     onUpdateCategories([...categories, newCat]);
     setNewCatName('');
-    setNewCatPassword('');
     setNewCatIcon('Folder');
     setNewCatRequireAuth(false);
   };
@@ -192,7 +186,6 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   
   const cancelAdd = () => {
     setNewCatName('');
-    setNewCatPassword('');
     setNewCatIcon('Folder');
     setNewCatRequireAuth(false);
   };
@@ -251,16 +244,6 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                             <Palette size={16} />
                           </button>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Lock size={14} className="text-slate-400" />
-                          <input 
-                            type="password" 
-                            value={editPassword}
-                            onChange={(e) => setEditPassword(e.target.value)}
-                            className="flex-1 p-1.5 px-2 text-sm rounded border border-blue-500 dark:bg-slate-800 dark:text-white outline-none"
-                            placeholder="密码（可选）"
-                          />
-                        </div>
                         <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                           <input
                             type="checkbox"
@@ -280,7 +263,7 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                             <span className="ml-2 text-xs text-slate-400">(默认分类，不可编辑)</span>
                           )}
                         </span>
-                        {(cat.password || cat.requireAuth) && (
+                        {cat.requireAuth && (
                           <Lock size={12} className="text-slate-400" />
                         )}
                       </div>
@@ -330,6 +313,7 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                   type="text"
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                   placeholder="分类名称"
                   className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                />
@@ -342,26 +326,13 @@ const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                  <Palette size={16} />
                </button>
              </div>
-             <div className="flex gap-2">
-                 <div className="flex-1 relative">
-                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input 
-                        type="text"
-                        value={newCatPassword}
-                        onChange={(e) => setNewCatPassword(e.target.value)}
-                        placeholder="密码 (可选)"
-                        className="w-full pl-8 p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                    />
-                 </div>
-                 <button 
-                    onClick={handleAdd}
-                    disabled={!newCatName.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
-                 >
-                   <Plus size={18} />
-                 </button>
-             </div>
+             <button
+                onClick={handleAdd}
+                disabled={!newCatName.trim()}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+             >
+               <Plus size={18} /> <span>添加分类</span>
+             </button>
              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                <input
                  type="checkbox"

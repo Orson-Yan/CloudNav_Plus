@@ -31,7 +31,6 @@ import LinkModal from './components/LinkModal';
 import AuthModal from './components/AuthModal';
 import CategoryManagerModal from './components/CategoryManagerModal';
 import BackupModal from './components/BackupModal';
-import CategoryAuthModal from './components/CategoryAuthModal';
 import ImportModal from './components/ImportModal';
 import SettingsModal from './components/SettingsModal';
 import SearchConfigModal from './components/SearchConfigModal';
@@ -117,9 +116,6 @@ function App() {
   const [externalSearchSources, setExternalSearchSources] = useState<ExternalSearchSource[]>([]);
   const [isLoadingSearchConfig, setIsLoadingSearchConfig] = useState(true);
   
-  // Category Security State
-  const [unlockedCategoryIds, setUnlockedCategoryIds] = useState<Set<string>>(new Set());
-
   // WebDAV Config State
   const [webDavConfig, setWebDavConfig] = useState<WebDavConfig>({
       url: '',
@@ -175,7 +171,6 @@ function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSearchConfigModalOpen, setIsSearchConfigModalOpen] = useState(false);
-  const [catAuthModalData, setCatAuthModalData] = useState<Category | null>(null);
   const [pendingProtectedCategoryId, setPendingProtectedCategoryId] = useState<string | null>(null);
   
   const [editingLink, setEditingLink] = useState<LinkItem | undefined>(undefined);
@@ -1561,21 +1556,9 @@ function App() {
           return;
       }
 
-      // If category has password and is NOT unlocked
-      if (cat.password && !unlockedCategoryIds.has(cat.id)) {
-          setCatAuthModalData(cat);
-          setSidebarOpen(false);
-          return;
-      }
       setSelectedTag(null);
       setSelectedCategory(cat.id);
       setSidebarOpen(false);
-  };
-
-  const handleUnlockCategory = (catId: string) => {
-      setUnlockedCategoryIds(prev => new Set(prev).add(catId));
-      setSelectedTag(null);
-      setSelectedCategory(catId);
   };
 
   const handleUpdateCategories = (newCats: Category[]) => {
@@ -1965,13 +1948,11 @@ function App() {
       return !!cat?.requireAuth && !authToken;
   };
 
-  // Helper to check if a category is "Locked"
+  // Helper to check if a category is "Locked" (requires login)
   const isCategoryLocked = (catId: string) => {
       const cat = categories.find(c => c.id === catId);
       if (!cat) return false;
-      if (cat.requireAuth && !authToken) return true;
-      if (!cat.password) return false;
-      return !unlockedCategoryIds.has(catId);
+      return !!cat.requireAuth && !authToken;
   };
 
   const pinnedLinks = useMemo(() => {
@@ -1989,7 +1970,7 @@ function App() {
         // 如果都没有pinnedOrder字段，则按创建时间排序
         return a.createdAt - b.createdAt;
       });
-  }, [links, categories, unlockedCategoryIds]);
+  }, [links, categories]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -2026,7 +2007,7 @@ function App() {
       const bOrder = b.order !== undefined ? b.order : b.createdAt;
       return aOrder - bOrder;
     });
-  }, [links, selectedCategory, selectedTag, searchQuery, categories, unlockedCategoryIds]);
+  }, [links, selectedCategory, selectedTag, searchQuery, categories]);
 
   // 计算其他目录的搜索结果
   const otherCategoryResults = useMemo(() => {
@@ -2075,7 +2056,7 @@ function App() {
     });
 
     return groupedByCategory;
-  }, [links, selectedCategory, searchQuery, categories, unlockedCategoryIds]);
+  }, [links, selectedCategory, searchQuery, categories]);
 
 
   // --- Render Components ---
@@ -2309,14 +2290,7 @@ function App() {
       )}
       {(!requiresAuth || authToken) && (
       <>
-      <CategoryAuthModal 
-        isOpen={!!catAuthModalData}
-        category={catAuthModalData}
-        onClose={() => setCatAuthModalData(null)}
-        onUnlock={handleUnlockCategory}
-      />
-
-      <CategoryManagerModal 
+      <CategoryManagerModal
         isOpen={isCatManagerOpen} 
         onClose={() => setIsCatManagerOpen(false)}
         categories={categories}
@@ -2424,7 +2398,7 @@ function App() {
                )}
             </div>
 
-            {categories.map(cat => {
+            {categories.filter(cat => !requiresGlobalCategoryAuth(cat.id)).map(cat => {
                 const isLocked = isCategoryLocked(cat.id);
                 return (
                   <button
@@ -3011,8 +2985,8 @@ function App() {
                         {isCategoryLocked(selectedCategory) ? (
                             <>
                                 <Lock size={40} className="text-amber-400 mb-4" />
-                                <p>该目录已锁定</p>
-                                <button onClick={() => setCatAuthModalData(categories.find(c => c.id === selectedCategory) || null)} className="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg">输入密码解锁</button>
+                                <p>该目录需登录后查看</p>
+                                <button onClick={() => setIsAuthOpen(true)} className="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg">登录</button>
                             </>
                         ) : (
                             <></>
