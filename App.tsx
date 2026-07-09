@@ -2421,10 +2421,8 @@ function App() {
                       {isLocked ? <Lock size={16} className="text-amber-500" /> : <Icon name={cat.icon} size={16} />}
                     </div>
                     <span className="truncate flex-1 text-left">{cat.name}</span>
-                    {requiresGlobalCategoryAuth(cat.id) && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                        需登录
-                      </span>
+                    {cat.requireAuth && (
+                      <Lock size={12} className="text-amber-500 shrink-0" />
                     )}
                     {selectedCategory === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" style={siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}></div>}
                   </button>
