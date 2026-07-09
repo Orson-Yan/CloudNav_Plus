@@ -2421,10 +2421,11 @@ function App() {
                       {isLocked ? <Lock size={16} className="text-amber-500" /> : <Icon name={cat.icon} size={16} />}
                     </div>
                     <span className="truncate flex-1 text-left">{cat.name}</span>
-                    {cat.requireAuth && (
+                    {selectedCategory === cat.id ? (
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" style={siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}></div>
+                    ) : cat.requireAuth ? (
                       <Lock size={12} className="text-amber-500 shrink-0" />
-                    )}
-                    {selectedCategory === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" style={siteSettings.themeColor ? { backgroundColor: 'var(--theme-500)' } : undefined}></div>}
+                    ) : null}
                   </button>
                 );
             })}
