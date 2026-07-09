@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Search, Plus, Upload, Moon, Sun, Menu, 
+  Search, Plus, Upload, Moon, Sun, Menu,
   Trash2, Edit2, Loader2, Cloud, CheckCircle2, AlertCircle,
-  Pin, Settings, Lock, CloudCog, Github, GitFork, GripVertical, Save, CheckSquare, LogOut, ExternalLink, X
+  Pin, Settings, Lock, CloudCog, Github, GitFork, GripVertical, Save, CheckSquare, LogOut, ExternalLink, X, Tag
 } from 'lucide-react';
 import {
   DndContext,
@@ -37,6 +37,7 @@ import SettingsModal from './components/SettingsModal';
 import SearchConfigModal from './components/SearchConfigModal';
 import ContextMenu from './components/ContextMenu';
 import QRCodeModal from './components/QRCodeModal';
+import CommandPalette from './components/CommandPalette';
 
 // --- 配置项 ---
 // 项目核心仓库地址
@@ -103,6 +104,7 @@ function App() {
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [darkMode, setDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -157,7 +159,8 @@ function App() {
           favicon: '',
           cardStyle: 'detailed' as const,
           requirePasswordOnVisit: false,
-          passwordExpiryDays: 7
+          passwordExpiryDays: 7,
+          background: ''
       };
   });
   
@@ -190,6 +193,9 @@ function App() {
   const [isBatchEditMode, setIsBatchEditMode] = useState(false); // 是否处于批量编辑模式
   const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set()); // 选中的链接ID集合
   
+  // Command Palette State
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
@@ -562,6 +568,18 @@ function App() {
   };
 
   // --- Effects ---
+
+  // Ctrl+K / Cmd+K 打开命令面板
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev: boolean) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     // Theme init
@@ -1966,17 +1984,23 @@ function App() {
       });
   }, [links, categories, unlockedCategoryIds]);
 
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    links.forEach(l => l.tags?.forEach(t => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [links]);
+
   const displayedLinks = useMemo(() => {
     let result = links;
-    
+
     // Security Filter: Always hide links from locked categories
     result = result.filter(l => !isCategoryLocked(l.categoryId));
 
     // Search Filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(l => 
-        l.title.toLowerCase().includes(q) || 
+      result = result.filter(l =>
+        l.title.toLowerCase().includes(q) ||
         l.url.toLowerCase().includes(q) ||
         (l.description && l.description.toLowerCase().includes(q))
       );
@@ -1986,17 +2010,18 @@ function App() {
     if (selectedCategory !== 'all') {
       result = result.filter(l => l.categoryId === selectedCategory);
     }
-    
-    // 按照order字段排序，如果没有order字段则按创建时间排序
-    // 修改排序逻辑：order值越大排在越前面，新增的卡片order值最大，会排在最前面
-    // 我们需要反转这个排序，让新增的卡片(order值最大)排在最后面
+
+    // Tag Filter
+    if (selectedTag) {
+      result = result.filter(l => l.tags?.includes(selectedTag));
+    }
+
     return result.sort((a, b) => {
       const aOrder = a.order !== undefined ? a.order : a.createdAt;
       const bOrder = b.order !== undefined ? b.order : b.createdAt;
-      // 改为升序排序，这样order值小(旧卡片)的排在前面，order值大(新卡片)的排在后面
       return aOrder - bOrder;
     });
-  }, [links, selectedCategory, searchQuery, categories, unlockedCategoryIds]);
+  }, [links, selectedCategory, selectedTag, searchQuery, categories, unlockedCategoryIds]);
 
   // 计算其他目录的搜索结果
   const otherCategoryResults = useMemo(() => {
@@ -2404,6 +2429,35 @@ function App() {
             })}
         </div>
 
+        {/* Tag Cloud */}
+        {allTags.length > 0 && (
+          <div className="px-3 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
+            <div className="flex items-center gap-1.5 mb-2 px-1">
+              <Tag size={12} className="text-slate-400" />
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">标签</span>
+              {selectedTag && (
+                <button
+                  onClick={() => setSelectedTag(null)}
+                  className="ml-auto text-xs text-blue-500 hover:text-blue-700"
+                >清除</button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => { setSelectedTag(selectedTag === tag ? null : tag); setSidebarOpen(false); }}
+                  className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                    selectedTag === tag
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-600'
+                  }`}
+                >#{tag}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
             
@@ -2459,7 +2513,10 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
+      <main
+        className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative"
+        style={siteSettings.background ? { background: siteSettings.background } : undefined}
+      >
         
         {/* Header */}
         <header className="h-16 px-4 lg:px-8 flex items-center justify-between bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 shrink-0">
@@ -2522,6 +2579,20 @@ function App() {
 
               {/* 搜索框 */}
               <div className={`relative w-full max-w-lg ${isMobileSearchOpen ? 'block' : 'hidden'} sm:block`}>
+                {/* 站内搜索：假输入框，点击打开命令面板 */}
+                {searchMode === 'internal' && (
+                  <button
+                    onClick={() => setIsCommandPaletteOpen(true)}
+                    className="w-full flex items-center gap-2 pl-9 pr-4 py-2 rounded-full bg-slate-100 dark:bg-slate-700/50 text-sm text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-left"
+                  >
+                    <Search size={16} className="absolute left-3 text-slate-400 pointer-events-none" />
+                    <span className="flex-1">搜索链接...</span>
+                    <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs border border-slate-300 dark:border-slate-600 rounded text-slate-400 bg-white dark:bg-slate-800 font-mono leading-none">
+                      Ctrl K
+                    </kbd>
+                  </button>
+                )}
+
                 {/* 搜索源选择弹出窗口 */}
                 {searchMode === 'external' && showSearchSourcePopup && (
                   <div 
@@ -2556,58 +2627,48 @@ function App() {
                   </div>
                 )}
 
-                <div 
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"
-                  onMouseEnter={() => searchMode === 'external' && setIsIconHovered(true)}
-                  onMouseLeave={() => setIsIconHovered(false)}
-                  onClick={() => {
-                    if (searchMode === 'external') {
-                      setShowSearchSourcePopup(!showSearchSourcePopup);
-                    }
-                  }}
-                >
-                  {searchMode === 'internal' ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-search">
-                      <path d="m21 21-4.35-4.35"></path>
-                      <circle cx="11" cy="11" r="8"></circle>
-                    </svg>
-                  ) : (hoveredSearchSource || selectedSearchSource) ? (
-                    <img 
-                      src={`https://www.faviconextractor.com/favicon/${new URL((hoveredSearchSource || selectedSearchSource).url).hostname}?larger=true`}
-                      alt={(hoveredSearchSource || selectedSearchSource).name}
-                      className="w-4 h-4"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXNlYXJjaCI+PHBhdGggZD0ibTIxIDIxLTQuMzQtNC4zNCI+PC9wYXRoPjxjaXJjbGUgY3g9IjExIiBjeT0iMTEiIHI9IjgiPjwvY2lyY2xlPjwvc3ZnPg==';
+                {/* 站外搜索：真实 input */}
+                {searchMode === 'external' && (
+                  <>
+                    <div
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"
+                      onMouseEnter={() => setIsIconHovered(true)}
+                      onMouseLeave={() => setIsIconHovered(false)}
+                      onClick={() => setShowSearchSourcePopup(!showSearchSourcePopup)}
+                    >
+                      {(hoveredSearchSource || selectedSearchSource) ? (
+                        <img
+                          src={`https://www.faviconextractor.com/favicon/${new URL((hoveredSearchSource || selectedSearchSource)!.url).hostname}?larger=true`}
+                          alt={(hoveredSearchSource || selectedSearchSource)!.name}
+                          className="w-4 h-4"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXNlYXJjaCI+PHBhdGggZD0ibTIxIDIxLTQuMzQtNC4zNCI+PC9wYXRoPjxjaXJjbGUgY3g9IjExIiBjeT0iMTEiIHI9IjgiPjwvY2lyY2xlPjwvc3ZnPg==';
+                          }}
+                        />
+                      ) : (
+                        <Search size={16} />
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={
+                        selectedSearchSource
+                          ? `在${selectedSearchSource.name}搜索内容`
+                          : "搜索站外内容..."
+                      }
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleExternalSearch();
                       }}
+                      className="w-full pl-9 pr-4 py-2 rounded-full bg-slate-100 dark:bg-slate-700/50 border-none text-sm focus:ring-2 focus:ring-blue-500 dark:text-white placeholder-slate-400 outline-none transition-all"
+                      style={{ fontSize: '16px' }}
+                      inputMode="search"
+                      enterKeyHint="search"
                     />
-                  ) : (
-                    <Search size={16} />
-                  )}
-                </div>
-                
-                <input
-                  type="text"
-                  placeholder={
-                    searchMode === 'internal' 
-                      ? "搜索站内内容..." 
-                      : selectedSearchSource 
-                        ? `在${selectedSearchSource.name}搜索内容` 
-                        : "搜索站外内容..."
-                  }
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchMode === 'external') {
-                      handleExternalSearch();
-                    }
-                  }}
-                  className="w-full pl-9 pr-4 py-2 rounded-full bg-slate-100 dark:bg-slate-700/50 border-none text-sm focus:ring-2 focus:ring-blue-500 dark:text-white placeholder-slate-400 outline-none transition-all"
-                  // 移动端优化：防止页面缩放
-                  style={{ fontSize: '16px' }}
-                  inputMode="search"
-                  enterKeyHint="search"
-                />
+                  </>
+                )}
 
                 {searchMode === 'external' && searchQuery.trim() && (
                   <button
@@ -2619,7 +2680,7 @@ function App() {
                   </button>
                 )}
                 
-                {searchQuery.trim() && (
+                {searchMode === 'external' && searchQuery.trim() && (
                   <button
                     onClick={() => setSearchQuery('')}
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500 dark:hover:text-red-400 transition-all"
@@ -2691,7 +2752,18 @@ function App() {
 
         {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8">
-            
+
+            {/* Tag filter banner */}
+            {selectedTag && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300">
+                <Tag size={14} />
+                <span>标签过滤：<strong>#{selectedTag}</strong></span>
+                <button onClick={() => setSelectedTag(null)} className="ml-auto text-blue-400 hover:text-blue-600">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* 1. Pinned Area (Custom Top Area) */}
             {pinnedLinks.length > 0 && !searchQuery && (selectedCategory === 'all') && (
                 <section>
@@ -3006,6 +3078,14 @@ function App() {
             url={qrCodeModal.url || ''}
             title={qrCodeModal.title || ''}
             onClose={() => setQrCodeModal({ isOpen: false, url: '', title: '' })}
+          />
+
+          {/* 命令面板 */}
+          <CommandPalette
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            links={links}
+            categories={categories}
           />
       </>
       )}

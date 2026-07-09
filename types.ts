@@ -9,6 +9,7 @@ export interface LinkItem {
   pinned?: boolean; // New field for pinning
   pinnedOrder?: number; // Field for pinned link sorting order
   order?: number; // Drag-and-drop sort order within a category
+  tags?: string[]; // Optional tags for cross-category filtering
 }
 
 export interface Category {
@@ -26,6 +27,7 @@ export interface SiteSettings {
   cardStyle: 'detailed' | 'simple';
   requirePasswordOnVisit: boolean;
   passwordExpiryDays: number; // 密码过期天数，0表示永久不退出
+  background?: string; // CSS background value, empty = default
 }
 
 export interface AppState {

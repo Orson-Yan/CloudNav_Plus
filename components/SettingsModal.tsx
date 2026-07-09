@@ -29,7 +29,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       favicon: siteSettings?.favicon || '',
       cardStyle: siteSettings?.cardStyle || 'detailed',
       requirePasswordOnVisit: siteSettings?.requirePasswordOnVisit ?? false,
-      passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7
+      passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7,
+      background: siteSettings?.background || ''
   }));
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -53,7 +54,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           favicon: siteSettings?.favicon || '',
           cardStyle: siteSettings?.cardStyle || 'detailed',
           requirePasswordOnVisit: siteSettings?.requirePasswordOnVisit ?? false,
-          passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7
+          passwordExpiryDays: siteSettings?.passwordExpiryDays ?? 7,
+          background: siteSettings?.background || ''
       };
       setLocalSiteSettings(safeSettings);
 
@@ -1233,8 +1235,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">身份验证过期天数</label>
                                 <div className="relative">
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         min="0"
                                         value={localSiteSettings.passwordExpiryDays}
                                         onChange={(e) => handleSiteChange('passwordExpiryDays', parseInt(e.target.value) || 0)}
@@ -1242,6 +1244,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     />
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">设置为 0 表示永久不退出，默认 7 天后自动退出</p>
+                            </div>
+
+                            {/* 自定义背景 */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">页面背景</label>
+                                {/* 渐变预设 */}
+                                <div className="grid grid-cols-5 gap-2 mb-3">
+                                    {[
+                                        { label: '默认', value: '' },
+                                        { label: '', value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #2d3748 0%, #1a202c 100%)' },
+                                        { label: '', value: 'linear-gradient(135deg, #e0e0e0 0%, #ffffff 100%)' },
+                                    ].map((preset) => (
+                                        <button
+                                            key={preset.value}
+                                            type="button"
+                                            onClick={() => handleSiteChange('background', preset.value)}
+                                            className={`h-9 rounded-lg border-2 transition-all ${
+                                                localSiteSettings.background === preset.value
+                                                    ? 'border-blue-500 scale-95 shadow-lg'
+                                                    : 'border-slate-200 dark:border-slate-600 hover:border-blue-300'
+                                            }`}
+                                            style={preset.value ? { background: preset.value } : { background: 'repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 4px, #f8fafc 4px, #f8fafc 8px)' }}
+                                            title={preset.label || preset.value || '默认'}
+                                        >
+                                            {preset.label && <span className="text-xs font-medium text-slate-600">{preset.label}</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* 自定义值输入 */}
+                                <input
+                                    type="text"
+                                    value={localSiteSettings.background || ''}
+                                    onChange={(e) => handleSiteChange('background', e.target.value)}
+                                    placeholder="自定义 CSS 背景值，如 #f0f0f0 或 url(...)"
+                                    className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">支持任意 CSS background 值：颜色、渐变、图片 URL 等</p>
                             </div>
                         </div>
                     </div>

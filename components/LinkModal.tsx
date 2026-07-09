@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, Pin, Wand2, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Sparkles, Loader2, Pin, Wand2, Trash2, Tag } from 'lucide-react';
 import { LinkItem, Category, AIConfig } from '../types';
 import { generateLinkDescription, suggestCategory } from '../services/geminiService';
 
@@ -24,6 +24,9 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
   const [isGenerating, setIsGenerating] = useState(false);
   const [isFetchingIcon, setIsFetchingIcon] = useState(false);
   const [autoFetchIcon, setAutoFetchIcon] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const [batchMode, setBatchMode] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
@@ -54,6 +57,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
         setCategoryId(initialData.categoryId);
         setPinned(initialData.pinned || false);
         setIcon(initialData.icon || '');
+        setTags(initialData.tags || []);
       } else {
         setTitle('');
         setUrl('');
@@ -63,7 +67,9 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
         setCategoryId(defaultCategory ? defaultCategoryId : (categories[0]?.id || 'common'));
         setPinned(false);
         setIcon('');
+        setTags([]);
       }
+      setTagInput('');
     }
   }, [isOpen, initialData, categories, defaultCategoryId]);
 
@@ -148,7 +154,8 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       icon: finalIcon,
       description,
       categoryId,
-      pinned
+      pinned,
+      tags: tags.length > 0 ? tags : undefined
     });
     
     // 批量模式下不关闭窗口，只显示成功提示
@@ -432,6 +439,51 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
             </select>
+          </div>
+
+          {/* 标签 */}
+          <div>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-300 flex items-center gap-1">
+              <Tag size={13} />标签
+            </label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {tags.map(tag => (
+                <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-full text-xs">
+                  #{tag}
+                  <button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="hover:text-red-500">
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+                    e.preventDefault();
+                    const newTag = tagInput.trim().replace(/^#+/, '');
+                    if (newTag && !tags.includes(newTag)) setTags([...tags, newTag]);
+                    setTagInput('');
+                  }
+                }}
+                placeholder="输入标签后按 Enter 或逗号"
+                className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const newTag = tagInput.trim().replace(/^#+/, '');
+                  if (newTag && !tags.includes(newTag)) setTags([...tags, newTag]);
+                  setTagInput('');
+                  tagInputRef.current?.focus();
+                }}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg text-sm"
+              >添加</button>
+            </div>
           </div>
 
           <div className="pt-2 relative">
